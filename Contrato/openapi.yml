@@ -1,7 +1,7 @@
 
 openapi: 3.1.0
 
-info:
+info: 
   title: DS 2026 API - Contrato de datos M5-M4
   description: |
     Primer borrador del contrato de datos entre M5
@@ -197,3 +197,42 @@ components:
       enum:
         - AUTO
         - MOTO
+
+# ==================================================
+    # 1. DATOS QUE M5 ENVÍA A M2
+    # ==================================================
+
+    ConsultaCliente:
+      type: object
+      additionalProperties: false
+      required:
+        - cliente_id
+
+      properties:
+        cliente_id:
+          type: string
+          format: uuid
+          description: Identificador del cliente que M5 necesita consultar.
+
+
+    # ==================================================
+    # 2. DATOS QUE M2 DEVUELVE A M5
+    # ==================================================
+
+    DatosCliente:
+      type: object
+      additionalProperties: false
+      required:
+        - cliente_id
+        - nombre
+
+      properties:
+        cliente_id:
+          type: string
+          format: uuid
+          description: Identificador único del cliente gestionado por M2.
+
+        nombre:
+          type: string
+          minLength: 1
+          description: Nombre del cliente asociado al identificador consultado.
