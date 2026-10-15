@@ -1,0 +1,199 @@
+
+openapi: 3.1.0
+
+info:
+  title: DS 2026 API - Contrato de datos M5-M4
+  description: |
+    Primer borrador del contrato de datos entre M5
+    (Solicitud y Despacho) y M4 (Ubicación y Disponibilidad).
+
+    No se definen endpoints en esta entrega.
+
+    Flujo:
+      1. M5 solicita conductores candidatos a M4.
+      2. M4 devuelve la lista de conductores disponibles.
+      3. M5 procesa las respuestas de los conductores.
+      4. Cuando un conductor acepta, M5 solicita a M4
+         reservarlo temporalmente.
+      5. M4 confirma si pudo realizar la reserva.
+  version: 1.0.0
+
+paths: {}
+
+components:
+  schemas:
+
+    # ==================================================
+    # 1. DATOS QUE M5 ENVIA A M4
+    # ==================================================
+
+    SolicitudConductores:
+      type: object
+      additionalProperties: false
+      required:
+        - solicitud_id
+        - origen_latitud
+        - origen_longitud
+        - destino_latitud
+        - destino_longitud
+        - tipo_vehiculo
+        - radio_maximo_km
+
+      properties:
+        solicitud_id:
+          type: string
+          format: uuid
+          description: Identificador de la solicitud creada por M5.
+
+        origen_latitud:
+          type: number
+          format: float
+          description: Latitud de la ubicación actual del cliente.
+
+        origen_longitud:
+          type: number
+          format: float
+          description: Longitud de la ubicación actual del cliente.
+
+        destino_latitud:
+          type: number
+          format: float
+          description: Latitud del destino del cliente.
+
+        destino_longitud:
+          type: number
+          format: float
+          description: Longitud del destino del cliente.
+
+        tipo_vehiculo:
+          $ref: '#/components/schemas/TipoVehiculo'
+
+        radio_maximo_km:
+          type: number
+          format: float
+          exclusiveMinimum: 0
+          description: Radio máximo de búsqueda expresado en kilómetros.
+
+
+    # ==================================================
+    # 2. DATOS QUE M4 DEVUELVE A M5
+    # ==================================================
+
+    ListaConductores:
+      type: object
+      additionalProperties: false
+      required:
+        - solicitud_id
+        - conductores
+
+      properties:
+        solicitud_id:
+          type: string
+          format: uuid
+          description: Solicitud para la cual se realizó la búsqueda.
+
+        conductores:
+          type: array
+          description: Lista de conductores candidatos encontrados por M4.
+          items:
+            $ref: '#/components/schemas/ConductorCandidato'
+
+
+    ConductorCandidato:
+      type: object
+      additionalProperties: false
+      required:
+        - conductor_id
+        - distancia_km
+        - eta_minutos
+
+      properties:
+        conductor_id:
+          type: string
+          format: uuid
+          description: Identificador del conductor candidato.
+
+        distancia_km:
+          type: number
+          format: float
+          minimum: 0
+          description: Distancia del conductor al origen del viaje, en kilómetros.
+
+        eta_minutos:
+          type: integer
+          minimum: 0
+          description: Tiempo estimado desde el conductor hasta el origen del viaje, en minutos.
+
+
+    # ==================================================
+    # 3. DATOS QUE M5 ENVIA A M4 CUANDO UN CONDUCTOR ACEPTA
+    # ==================================================
+
+    SolicitudReservaTemporal:
+      type: object
+      additionalProperties: false
+      required:
+        - solicitud_id
+        - conductor_id
+
+      properties:
+        solicitud_id:
+          type: string
+          format: uuid
+          description: Solicitud para la cual el conductor aceptó la oferta.
+
+        conductor_id:
+          type: string
+          format: uuid
+          description: Conductor que M5 solicita reservar temporalmente.
+
+        accion:
+          type: string
+          enum:
+            - RESERVAR_TEMPORALMENTE
+          description: Acción solicitada a M4.
+
+
+    # ==================================================
+    # 4. CONFIRMACION DE M4 A M5 SOBRE LA RESERVA
+    # ==================================================
+
+    ConfirmacionReserva:
+      type: object
+      additionalProperties: false
+      required:
+        - solicitud_id
+        - conductor_id
+        - reservado_temporal
+
+      properties:
+        solicitud_id:
+          type: string
+          format: uuid
+          description: Solicitud asociada a la reserva.
+
+        conductor_id:
+          type: string
+          format: uuid
+          description: Conductor cuya reserva se intentó realizar.
+
+        reservado_temporal:
+          type: boolean
+          description: |
+            true si M4 reservó temporalmente al conductor;
+            false si no pudo reservarlo.
+
+        motivo:
+          type: string
+          description: Motivo del rechazo de la reserva, si corresponde.
+
+
+    # ==================================================
+    # 5. TIPOS COMPARTIDOS
+    # ==================================================
+
+    TipoVehiculo:
+      type: string
+      enum:
+        - AUTO
+        - MOTO
