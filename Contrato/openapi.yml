@@ -23,10 +23,7 @@ paths: {}
 components:
   schemas:
 
-    # ==================================================
-    # 1. DATOS QUE M5 ENVIA A M4
-    # ==================================================
-
+#solicitar conductores a M4
     SolicitudConductores:
       type: object
       additionalProperties: false
@@ -74,11 +71,6 @@ components:
           exclusiveMinimum: 0
           description: Radio máximo de búsqueda expresado en kilómetros.
 
-
-    # ==================================================
-    # 2. DATOS QUE M4 DEVUELVE A M5
-    # ==================================================
-
     ListaConductores:
       type: object
       additionalProperties: false
@@ -97,7 +89,6 @@ components:
           description: Lista de conductores candidatos encontrados por M4.
           items:
             $ref: '#/components/schemas/ConductorCandidato'
-
 
     ConductorCandidato:
       type: object
@@ -124,11 +115,6 @@ components:
           minimum: 0
           description: Tiempo estimado desde el conductor hasta el origen del viaje, en minutos.
 
-
-    # ==================================================
-    # 3. DATOS QUE M5 ENVIA A M4 CUANDO UN CONDUCTOR ACEPTA
-    # ==================================================
-
     SolicitudReservaTemporal:
       type: object
       additionalProperties: false
@@ -152,11 +138,6 @@ components:
           enum:
             - RESERVAR_TEMPORALMENTE
           description: Acción solicitada a M4.
-
-
-    # ==================================================
-    # 4. CONFIRMACION DE M4 A M5 SOBRE LA RESERVA
-    # ==================================================
 
     ConfirmacionReserva:
       type: object
@@ -187,37 +168,24 @@ components:
           type: string
           description: Motivo del rechazo de la reserva, si corresponde.
 
-
-    # ==================================================
-    # 5. TIPOS COMPARTIDOS
-    # ==================================================
-
     TipoVehiculo:
       type: string
       enum:
         - AUTO
         - MOTO
 
-# ==================================================
-    # 1. DATOS QUE M5 ENVÍA A M2
-    # ==================================================
-
+# Solicitar ID y correo a M2 
     ConsultaCliente:
       type: object
       additionalProperties: false
       required:
-        - cliente_id
+        - Email
 
       properties:
-        cliente_id:
+        Email:
           type: string
-          format: uuid
-          description: Identificador del cliente que M5 necesita consultar.
-
-
-    # ==================================================
-    # 2. DATOS QUE M2 DEVUELVE A M5
-    # ==================================================
+          format: email
+          description: Correo electrónico del cliente que M5 necesita consultar.
 
     DatosCliente:
       type: object
