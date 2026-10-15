@@ -1,3 +1,4 @@
+
 const Coordenada = require("./Coordenada");
 
 class SolicitudDespacho {
@@ -118,3 +119,6 @@ class SolicitudDespacho {
 
         this.estado = "SIN_DISPONIBILIDAD";
     }
+}
+
+module.exports = SolicitudDespacho;
