@@ -1,4 +1,4 @@
-
+const { randomUUID } = require("crypto");
 const Coordenada = require("./Coordenada");
 
 class SolicitudDespacho {
@@ -10,35 +10,11 @@ class SolicitudDespacho {
         tipoVehiculo,
         tipoActivacion,
         reservaId = null,
-        estado = "CREADA",
+        estado = "pendiente",
         conductorAsignadoId = null,
-        version = 1,
-        claveIdempotencia,
         creadaEn = new Date(),
         ofertaEnviadaEn = null
     }) {
-        if (!solicitudId) {
-            throw new Error("La solicitud debe tener un ID");
-        }
-
-        if (!clienteId) {
-            throw new Error("La solicitud debe tener un cliente");
-        }
-
-        if (!(origen instanceof Coordenada)) {
-            throw new Error("El origen debe ser una Coordenada");
-        }
-
-        if (!(destino instanceof Coordenada)) {
-            throw new Error("El destino debe ser una Coordenada");
-        }
-
-        const tiposVehiculo = ["AUTO", "MOTO"];
-
-        if (!tiposVehiculo.includes(tipoVehiculo)) {
-            throw new Error("Tipo de vehículo inválido");
-        }
-
         this.solicitudId = solicitudId;
         this.clienteId = clienteId;
         this.origen = origen;
@@ -48,11 +24,24 @@ class SolicitudDespacho {
         this.reservaId = reservaId;
         this.estado = estado;
         this.conductorAsignadoId = conductorAsignadoId;
-        this.version = version;
-        this.claveIdempotencia = claveIdempotencia;
         this.creadaEn = creadaEn;
         this.ofertaEnviadaEn = ofertaEnviadaEn;
     }
+
+    static crear(clienteId, origen, destino, tipoVehiculo) {
+        return new SolicitudDespacho({
+            solicitudId: randomUUID(),
+            clienteId: clienteId,
+            origen: origen,
+            destino: destino,
+            tipoVehiculo: tipoVehiculo,
+            tipoActivacion: "INMEDIATA",
+            estado: "pendiente"
+        });
+    }
+}
+
+module.exports = SolicitudDespacho;
 
     crear() {
         if (this.estado !== "CREADA") {
@@ -106,7 +95,6 @@ class SolicitudDespacho {
         this.conductorAsignadoId = conductorId;
         this.ofertaAsignadaId = ofertaId;
         this.estado = "ASIGNADA";
-        this.version++;
         return true;
     }
 
