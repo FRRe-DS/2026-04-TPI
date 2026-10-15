@@ -9,7 +9,6 @@ class SolicitudDespacho {
         destino,
         tipoVehiculo,
         tipoActivacion,
-        reservaId = null,
         estado = "pendiente",
         conductorAsignadoId = null,
         creadaEn = new Date(),
@@ -28,14 +27,25 @@ class SolicitudDespacho {
         this.ofertaEnviadaEn = ofertaEnviadaEn;
     }
 
-    static crear(clienteId, origen, destino, tipoVehiculo) {
+    static crearInmediato(clienteId, origen, destino, tipoVehiculo) {
         return new SolicitudDespacho({
             solicitudId: randomUUID(),
             clienteId: clienteId,
             origen: origen,
             destino: destino,
             tipoVehiculo: tipoVehiculo,
-            tipoActivacion: "INMEDIATA",
+            tipoActivacion: "Inmediata",
+            estado: "pendiente"
+        });
+    }
+    static crearReserva(clienteId, origen, destino, tipoVehiculo) {
+        return new SolicitudDespacho({
+            solicitudId: randomUUID(),
+            clienteId: clienteId,
+            origen: origen,
+            destino: destino,
+            tipoVehiculo: tipoVehiculo,
+            tipoActivacion: "Reserva",
             estado: "pendiente"
         });
     }
