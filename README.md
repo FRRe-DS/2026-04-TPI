@@ -1,1 +1,2 @@
-#Aclaraciones del M1
+#Dudas del M1
+como funciona el M1, porque si tiene los logueos podria tener los id vinculados y no los tendrian los otros modulos. El id deberiamos pasarlos a los otros grupos para pedirle los datos necesarios o se sigue usando un email obtenido de M1?
