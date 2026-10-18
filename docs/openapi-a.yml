@@ -2,26 +2,51 @@
 openapi: 3.1.0
 
 info: 
-  title: DS 2026 API - Contrato de datos M5-M4
+  title: DS 2026 API - Contratos de M4 
   description: |
-    Primer borrador del contrato de datos entre M5
-    (Solicitud y Despacho) y M4 (Ubicación y Disponibilidad).
+    Todos los contratos del GA del G4.
 
     No se definen endpoints en esta entrega.
 
-    Flujo:
-      1. M5 solicita conductores candidatos a M4.
-      2. M4 devuelve la lista de conductores disponibles.
-      3. M5 procesa las respuestas de los conductores.
-      4. Cuando un conductor acepta, M5 solicita a M4
-         reservarlo temporalmente.
-      5. M4 confirma si pudo realizar la reserva.
   version: 1.0.0
 
 paths: {}
 
 components:
   schemas:
+
+# Solicitar ID y correo a M2 
+    ConsultaCliente:
+      type: object
+      additionalProperties: false
+      required:
+        - Email
+
+      properties:
+        Email:
+          type: string
+          format: email
+          description: Correo electrónico del cliente que M5 necesita consultar.
+
+    DatosCliente:
+      type: object
+      additionalProperties: false
+      required:
+        - cliente_id
+        - nombre
+
+      properties:
+        cliente_id:
+          type: string
+          format: uuid
+          description: Identificador único del cliente gestionado por M2.
+
+        nombre:
+          type: string
+          minLength: 1
+          description: Nombre del cliente asociado al identificador consultado.
+
+
 
 #solicitar conductores a M4
     SolicitudConductores:
@@ -174,33 +199,3 @@ components:
         - AUTO
         - MOTO
 
-# Solicitar ID y correo a M2 
-    ConsultaCliente:
-      type: object
-      additionalProperties: false
-      required:
-        - Email
-
-      properties:
-        Email:
-          type: string
-          format: email
-          description: Correo electrónico del cliente que M5 necesita consultar.
-
-    DatosCliente:
-      type: object
-      additionalProperties: false
-      required:
-        - cliente_id
-        - nombre
-
-      properties:
-        cliente_id:
-          type: string
-          format: uuid
-          description: Identificador único del cliente gestionado por M2.
-
-        nombre:
-          type: string
-          minLength: 1
-          description: Nombre del cliente asociado al identificador consultado.
