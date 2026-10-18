@@ -1,4 +1,3 @@
-
 openapi: 3.1.0
 
 info: 
@@ -13,20 +12,8 @@ info:
 paths: {}
 
 components:
-openapi: 3.1.0
-
-info:
-  title: DS 2026 API - M5 Solicitud y Despacho
-  description: |
-    Contratos de M5 para identificar al cliente autenticado
-    y asociarlo a una solicitud de viaje.
-  version: 1.0.0
-
-paths: {}
-
-components:
   securitySchemes:
-    bearerAuth:
+    tokenM1:
       type: http
       scheme: bearer
       bearerFormat: JWT
@@ -59,21 +46,6 @@ components:
             Identificador de identidad que M2 utiliza
             para localizar el perfil correspondiente.
 
-
-
-# Solicitar ID y correo a M2 
-    ConsultaCliente:
-      type: object
-      additionalProperties: false
-      required:
-        - Email
-
-      properties:
-        Email:
-          type: string
-          format: email
-          description: Correo electrónico del cliente que M5 necesita consultar.
-
     DatosCliente:
       type: object
       additionalProperties: false
@@ -96,163 +68,11 @@ components:
       type: object
       additionalProperties: false
       required:
-        - Email
-
+        - identidad_id
       properties:
-        Email:
+        identidad_id:
           type: string
-          format: email
-          description: Correo electrónico del cliente que M5 necesita consultar.
+          description: Identificador estable de la identidad del cliente.
 
 
-#solicitar conductores a M4
-    SolicitudConductores:
-      type: object
-      additionalProperties: false
-      required:
-        - solicitud_id
-        - origen_latitud
-        - origen_longitud
-        - destino_latitud
-        - destino_longitud
-        - tipo_vehiculo
-        - radio_maximo_km
-
-      properties:
-        solicitud_id:
-          type: string
-          format: uuid
-          description: Identificador de la solicitud creada por M5.
-
-        origen_latitud:
-          type: number
-          format: float
-          description: Latitud de la ubicación actual del cliente.
-
-        origen_longitud:
-          type: number
-          format: float
-          description: Longitud de la ubicación actual del cliente.
-
-        destino_latitud:
-          type: number
-          format: float
-          description: Latitud del destino del cliente.
-
-        destino_longitud:
-          type: number
-          format: float
-          description: Longitud del destino del cliente.
-
-        tipo_vehiculo:
-          $ref: '#/components/schemas/TipoVehiculo'
-
-        radio_maximo_km:
-          type: number
-          format: float
-          exclusiveMinimum: 0
-          description: Radio máximo de búsqueda expresado en kilómetros.
-
-    ListaConductores:
-      type: object
-      additionalProperties: false
-      required:
-        - solicitud_id
-        - conductores
-
-      properties:
-        solicitud_id:
-          type: string
-          format: uuid
-          description: Solicitud para la cual se realizó la búsqueda.
-
-        conductores:
-          type: array
-          description: Lista de conductores candidatos encontrados por M4.
-          items:
-            $ref: '#/components/schemas/ConductorCandidato'
-
-    ConductorCandidato:
-      type: object
-      additionalProperties: false
-      required:
-        - conductor_id
-        - distancia_km
-        - eta_minutos
-
-      properties:
-        conductor_id:
-          type: string
-          format: uuid
-          description: Identificador del conductor candidato.
-
-        distancia_km:
-          type: number
-          format: float
-          minimum: 0
-          description: Distancia del conductor al origen del viaje, en kilómetros.
-
-        eta_minutos:
-          type: integer
-          minimum: 0
-          description: Tiempo estimado desde el conductor hasta el origen del viaje, en minutos.
-
-    SolicitudReservaTemporal:
-      type: object
-      additionalProperties: false
-      required:
-        - solicitud_id
-        - conductor_id
-
-      properties:
-        solicitud_id:
-          type: string
-          format: uuid
-          description: Solicitud para la cual el conductor aceptó la oferta.
-
-        conductor_id:
-          type: string
-          format: uuid
-          description: Conductor que M5 solicita reservar temporalmente.
-
-        accion:
-          type: string
-          enum:
-            - RESERVAR_TEMPORALMENTE
-          description: Acción solicitada a M4.
-
-    ConfirmacionReserva:
-      type: object
-      additionalProperties: false
-      required:
-        - solicitud_id
-        - conductor_id
-        - reservado_temporal
-
-      properties:
-        solicitud_id:
-          type: string
-          format: uuid
-          description: Solicitud asociada a la reserva.
-
-        conductor_id:
-          type: string
-          format: uuid
-          description: Conductor cuya reserva se intentó realizar.
-
-        reservado_temporal:
-          type: boolean
-          description: |
-            true si M4 reservó temporalmente al conductor;
-            false si no pudo reservarlo.
-
-        motivo:
-          type: string
-          description: Motivo del rechazo de la reserva, si corresponde.
-
-    TipoVehiculo:
-      type: string
-      enum:
-        - AUTO
-        - MOTO
 
