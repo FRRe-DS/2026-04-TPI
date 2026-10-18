@@ -51,7 +51,7 @@ components:
       additionalProperties: false
       required:
         - cliente_id
-        - nombre
+        - nombre_cliente
 
       properties:
         cliente_id:
@@ -59,7 +59,7 @@ components:
           format: uuid
           description: Identificador único del cliente gestionado por M2.
 
-        nombre:
+        nombre_cliente:
           type: string
           minLength: 1
           description: Nombre del cliente asociado al identificador consultado.
@@ -74,5 +74,151 @@ components:
           type: string
           description: Identificador estable de la identidad del cliente.
 
+# formato de la solicitud
+    Solicitud:
+          type: object
+          additionalProperties: false
+          required:
+            - solicitud_id
+            - cliente_id
+            - nombre_cliente
+            - conductor_id  #Mantendría Solicitud como concepto central del Grupo A, pero corregiría los campos obligatorios y dejaría conductor_id opcional mientras no exista una asignación.
+            - nombre_conductor
+            - origen_latitud #ver como tratar las ubicaciones.
+            - origen_longitud
+            - destino_latitud
+            - destino_longitud
+            - tipo_vehiculo
+            - estado
 
+          properties:
+            solicitud_id:
+              type: string
+              format: uuid
+              description: Identificador de la solicitud creada por M5.
+            
+            cliente_id:
+              type: string
+              format: uuid
+              description: Identificador del cliente que realizó la solicitud.
+            
+            nombre_cliente:
+              type: string
+              minLength: 1
+              description: Nombre del cliente que realizó la solicitud.
+
+            conductor_id:
+              type: string
+              format: uuid
+              description: Identificador del conductor que aceptó la solicitud.
+
+            nombre_conductor:
+              type: string
+              minLength: 1
+              description: Nombre del conductor que aceptó la solicitud.
+
+            origen_latitud:
+              type: number
+              format: float
+              description: Latitud de la ubicación actual del cliente.
+
+            origen_longitud:
+              type: number
+              format: float
+              description: Longitud de la ubicación actual del cliente.
+
+            destino_latitud:
+              type: number
+              format: float
+              description: Latitud del destino del cliente.
+
+            destino_longitud:
+              type: number
+              format: float
+              description: Longitud del destino del cliente.
+
+            tipo_vehiculo:
+              $ref: '#/components/schemas/TipoVehiculo'
+            
+            estado:
+              type: string
+              description: | 
+                Estado de la solicitud. puede ser uno de los siguientes valores: 
+                - PENDIENTE: La solicitud fue creada y está pendiente de aceptación por parte de un conductor.
+                - ACEPTADA: La solicitud fue aceptada por un conductor y está en curso.
+                - FINALIZADA: La solicitud fue completada y finalizada.
+                - CANCELADA: La solicitud fue cancelada por el cliente o el conductor. 
+
+# Solicitud de G1 a G2 para obtener los datos del conductor que aceptó la solicitud.
+    SolicitarDatosConductor:
+      type: object
+      additionalProperties: false
+      required:
+        - solicitud_id
+        - origen
+        - destino
+        - tipo_vehiculo
+
+      properties:
+        solicitud_id:
+          $ref: '#/components/schemas/Solicitud/properties/solicitud_id'
+
+        origen:
+          type: object
+          additionalProperties: false
+          required:
+            - latitud
+            - longitud
+
+          properties:
+            latitud:
+              $ref: '#/components/schemas/Solicitud/properties/origen_latitud'
+
+            longitud:
+              $ref: '#/components/schemas/Solicitud/properties/origen_longitud'
+
+        destino:
+          type: object
+          additionalProperties: false
+          required:
+            - latitud
+            - longitud
+
+          properties:
+            latitud:
+              $ref: '#/components/schemas/Solicitud/properties/destino_latitud'
+
+            longitud:
+              $ref: '#/components/schemas/Solicitud/properties/destino_longitud'
+
+        tipo_vehiculo:
+          $ref: '#/components/schemas/Solicitud/properties/tipo_vehiculo'
+
+# lo que nos devuelve el G2 con los datos del conductor que aceptó la solicitud.
+    DatosConductor:
+      type: object
+      additionalProperties: false
+      required:
+        - conductor_id
+        - nombre_conductor
+
+      properties:
+        conductor_id:
+          type: string
+          format: uuid
+          description: Identificador único del conductor gestionado por M3.
+
+        nombre_conductor:
+          type: string
+          minLength: 1
+          description: Nombre del conductor asociado al identificador consultado.
+
+        tipo_vehiculo:
+          $ref: '#/components/schemas/TipoVehiculo'
+
+    TipoVehiculo:
+      type: string
+      enum:
+        - AUTO
+        - MOTO
 
