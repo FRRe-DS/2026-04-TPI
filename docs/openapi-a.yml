@@ -13,7 +13,53 @@ info:
 paths: {}
 
 components:
+openapi: 3.1.0
+
+info:
+  title: DS 2026 API - M5 Solicitud y Despacho
+  description: |
+    Contratos de M5 para identificar al cliente autenticado
+    y asociarlo a una solicitud de viaje.
+  version: 1.0.0
+
+paths: {}
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token de acceso emitido por M1.
+
   schemas:
+    # Identidad autenticada obtenida a partir del token validado.
+    IdentidadAutenticada:
+      type: object
+      additionalProperties: false
+      required:
+        - identidad_id
+      properties:
+        identidad_id:
+          type: string
+          description: |
+            Identificador estable del usuario autenticado,
+            obtenido del token validado por M1.
+
+    # Consulta que M5 necesita realizar a M2.
+    ConsultaCliente:
+      type: object
+      additionalProperties: false
+      required:
+        - identidad_id
+      properties:
+        identidad_id:
+          type: string
+          description: |
+            Identificador de identidad que M2 utiliza
+            para localizar el perfil correspondiente.
+
+
 
 # Solicitar ID y correo a M2 
     ConsultaCliente:
