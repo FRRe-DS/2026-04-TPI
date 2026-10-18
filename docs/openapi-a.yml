@@ -46,6 +46,17 @@ components:
           minLength: 1
           description: Nombre del cliente asociado al identificador consultado.
 
+    ConsultaReserva:
+      type: object
+      additionalProperties: false
+      required:
+        - Email
+
+      properties:
+        Email:
+          type: string
+          format: email
+          description: Correo electrónico del cliente que M5 necesita consultar.
 
 
 #solicitar conductores a M4
