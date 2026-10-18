@@ -4,7 +4,7 @@ openapi: 3.1.0
 info: 
   title: DS 2026 API - Contratos de M4 
   description: |
-    Todos los contratos del GA del G5.
+    Todos los contratos del GA del G4.
 
     No se definen endpoints en esta entrega.
 
