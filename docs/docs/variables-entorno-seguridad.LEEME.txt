@@ -1,0 +1,4 @@
+Variables de entorno que necesita la capa de seguridad (src/comun).
+El .env.example del repo es de Martin (docker-compose + .env.example): hay que COPIAR
+estas variables dentro de ese archivo en vez de agregar otro.
+Ver docs/variables-entorno-seguridad.example
