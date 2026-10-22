@@ -1,0 +1,29 @@
+SERVIDOR DE PRUEBA LOCAL (puertos temporales)
+=============================================
+Levanta la app real (JWT, roles, validación, asignación única) con A y B reemplazados por
+versiones en memoria. Los datos se pierden al cortar el proceso.
+
+  node tests/soporte/servidorLocal.js          (puerto 3000; otro: PORT=3999 node ...)
+
+Al arrancar imprime las ofertas y los tokens (COND1..3, CLIENTE, ADMIN). Son SOLO de prueba:
+en producción los emite M1. Cargarlos en variables:   T1=<token COND1>   TA=<token ADMIN>
+
+Cuerpo del POST: {"acepta": true}  o  {"acepta": false}  (el rechazo responde 501 hasta que Azul lo implemente)
+
+  curl -s localhost:3000/health
+  curl -s -X POST localhost:3000/ofertas/11111111-1111-4111-8111-111111111111/respuesta \
+       -H "authorization: Bearer $T1" -H "content-type: application/json" -d '{"acepta":true}'
+  curl -s localhost:3000/debug/estado -H "authorization: Bearer $TA"
+  curl -s -X POST localhost:3000/debug/cancelar  -H "authorization: Bearer $TA"
+  curl -s -X POST localhost:3000/debug/reiniciar -H "authorization: Bearer $TA"
+
+Las rutas /debug/* existen solo en este archivo y piden rol ADMINISTRADOR. NO van al repo real.
+
+Qué se espera (verificado):
+  sin token 401 · rol CLIENTE 403 · oferta de otro conductor 403 · body inválido 400
+  primer ACEPTAR 200 ASIGNADA · mismo conductor otra vez 200 repetida:true
+  otro conductor después 409 YA_ASIGNADA · tres ACEPTAR a la vez: un 200 y dos 409
+  tras /debug/cancelar, aceptar da 409 SOLICITUD_CANCELADA
+
+Cuando A y Azul tengan sus piezas reales, se reemplazan de a una en `deps` (validarDependencias
+dice qué falta) y se reusa el mismo servidor.
