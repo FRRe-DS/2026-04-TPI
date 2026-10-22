@@ -99,7 +99,8 @@
           clienteId: CLIENTE_ID,
           origen,
           destino,
-          tipoVehiculo: vehicle
+          tipoVehiculo: vehicle,
+          tipoActivacion: "Inmediata"
         })
       });
 
@@ -108,7 +109,7 @@
       const solicitud = data.solicitud || data;
 
       showFeedback(
-        `Solicitud creada y agregada a Lista de pendientes. ID: ${solicitud.solicitudId} · Estado: ${solicitud.estado}. Pendientes: ${data.pendientes ?? "—"}.`,
+        `Solicitud guardada en la base de datos. ID: ${solicitud.solicitudId} · Estado: ${solicitud.estado}. Persistida en MySQL.`,
         "success"
       );
       $("created-result").hidden = false;
