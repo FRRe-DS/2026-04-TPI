@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ventana de solicitud | Celeste</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="/css/ventana-de-solicitud.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#" aria-label="Celeste inicio">
+        <span class="brand-mark">C</span>
+        <span class="brand-copy"><strong>celeste</strong><small>Movilidad urbana</small></span>
+      </a>
+
+      <div class="sidebar-label">MENÚ PRINCIPAL</div>
+      <nav class="side-nav" aria-label="Menú principal">
+        <!-- Para agregar futuras secciones, añadir nuevos enlaces .nav-item aquí. -->
+        <a class="nav-item active" href="#solicitud" aria-current="page">
+          <span class="nav-icon">＋</span>
+          <span>Solicitud</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <span class="help-icon">?</span>
+        <div><strong>Módulo M5</strong><small>Solicitud y Despacho</small></div>
+      </div>
+    </aside>
+
+    <main class="main-content" id="solicitud">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">MÓDULO 05 · SOLICITUD Y DESPACHO</p>
+          <h1>Solicitá tu viaje</h1>
+          <p class="subtitle">Seleccioná el origen, el destino y el tipo de vehículo.</p>
+        </div>
+        <div class="client-chip"><span class="client-avatar">001</span><span><small>CLIENTE</small><strong>ID 001</strong></span></div>
+      </header>
+
+      <div class="content-grid">
+        <section class="request-card">
+          <div class="card-heading">
+            <div><span class="step-label">PASO 1</span><h2>Elegí tu recorrido</h2></div>
+            <span class="required-note">* Obligatorio</span>
+          </div>
+
+          <div class="route-fields">
+            <div class="route-rail"><span class="rail-point point-a">A</span><span class="rail-line"></span><span class="rail-point point-b">B</span></div>
+            <div class="route-inputs">
+              <div class="field">
+                <label for="origin-text">Origen</label>
+                <input id="origin-text" readonly placeholder="Hacé clic en el mapa para elegir">
+                <small id="origin-coords">Sin seleccionar</small>
+              </div>
+              <div class="field">
+                <label for="destination-text">Destino</label>
+                <input id="destination-text" readonly placeholder="Hacé clic en el mapa para elegir">
+                <small id="destination-coords">Sin seleccionar</small>
+              </div>
+            </div>
+          </div>
+
+          <div class="map-toolbar">
+            <p><span class="map-pin-icon">⌖</span> Elegí qué punto colocar y marcá la ubicación en el mapa.</p>
+            <div class="map-actions">
+              <button type="button" id="choose-origin" class="map-mode active">A · Origen</button>
+              <button type="button" id="choose-destination" class="map-mode">B · Destino</button>
+            </div>
+          </div>
+          <div id="map" aria-label="Mapa interactivo para elegir origen y destino"></div>
+          <div class="map-legend"><span><i class="legend-a"></i> Origen</span><span><i class="legend-b"></i> Destino</span><small>© OpenStreetMap</small></div>
+
+          <div class="vehicle-section">
+            <div class="card-heading vehicle-heading">
+              <div><span class="step-label">PASO 2</span><h2>Elegí el vehículo</h2></div>
+            </div>
+            <div class="vehicle-grid">
+              <button type="button" class="vehicle-option selected" data-vehicle="AUTO" aria-pressed="true">
+                <span class="vehicle-emoji">🚘</span><span class="vehicle-text"><strong>Auto</strong><small>Viaje cómodo</small></span><span class="check">✓</span>
+              </button>
+              <button type="button" class="vehicle-option" data-vehicle="MOTO" aria-pressed="false">
+                <span class="vehicle-emoji">🏍️</span><span class="vehicle-text"><strong>Moto</strong><small>Ágil y rápida</small></span><span class="check">✓</span>
+              </button>
+            </div>
+          </div>
+
+          <button type="button" id="submit-request" class="submit-button"><span>Crear solicitud</span><span class="arrow">→</span></button>
+          <p class="form-footnote">Se creará una solicitud inmediata con estado inicial <strong>pendiente</strong>.</p>
+          <div id="feedback" class="feedback" role="status" aria-live="polite"></div>
+        </section>
+
+        <aside class="summary-card">
+          <div class="summary-title"><div><span class="step-label">RESUMEN</span><h2>Tu solicitud</h2></div><span class="summary-symbol">✦</span></div>
+          <div class="summary-route">
+            <div class="summary-stop"><i class="summary-dot dot-a"></i><div><small>ORIGEN</small><strong id="summary-origin">Sin seleccionar</strong></div></div>
+            <span class="summary-line"></span>
+            <div class="summary-stop"><i class="summary-dot dot-b"></i><div><small>DESTINO</small><strong id="summary-destination">Sin seleccionar</strong></div></div>
+          </div>
+          <div class="summary-separator"></div>
+          <div class="summary-row"><span>Cliente</span><strong>001</strong></div>
+          <div class="summary-row"><span>Vehículo</span><strong id="summary-vehicle">Auto</strong></div>
+          <div class="summary-row"><span>Activación</span><strong>Inmediata</strong></div>
+          <div class="summary-row"><span>Estado inicial</span><span class="pending">Pendiente</span></div>
+          <div class="info-box"><span>ⓘ</span><p>La búsqueda de conductores se integrará con el módulo M4 en una siguiente etapa.</p></div>
+          <div id="created-result" class="created-result" hidden></div>
+        </aside>
+      </div>
+      <footer class="footer"><span>Celeste Movilidad</span><span>Prototipo académico · M5</span></footer>
+    </main>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/js/ventana-de-solicitud.js"></script>
+</body>
+</html>

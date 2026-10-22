@@ -1,21 +1,24 @@
 const { randomUUID } = require("crypto");
-const Coordenada = require("./Coordenada");
+const Coordenada = require("./Cordenada");
 
 class SolicitudDespacho {
     constructor({
-        solicitudId,
-        clienteId,
-        origen,
-        destino,
-        tipoVehiculo,
-        tipoActivacion,
-        estado = "pendiente",
-        conductorAsignadoId = null,
-        creadaEn = new Date(),
-        ofertaEnviadaEn = null
+        solicitudId, clienteId, origen, destino, tipoVehiculo,
+        tipoActivacion = "Inmediata", reservaId = null,
+        estado = "pendiente", conductorAsignadoId = null,
+        creadaEn = new Date(), ofertaEnviadaEn = null
     }) {
+        if (!solicitudId) throw new Error("La solicitud debe tener un identificador");
+        if (clienteId === undefined || clienteId === null || String(clienteId).trim() === "") {
+            throw new Error("La solicitud debe tener un cliente");
+        }
+        if (!(origen instanceof Coordenada)) throw new Error("El origen debe ser una Coordenada");
+        if (!(destino instanceof Coordenada)) throw new Error("El destino debe ser una Coordenada");
+        if (!["AUTO", "MOTO"].includes(tipoVehiculo)) {
+            throw new Error('El tipo de vehículo debe ser "AUTO" o "MOTO"');
+        }
         this.solicitudId = solicitudId;
-        this.clienteId = clienteId;
+        this.clienteId = String(clienteId);
         this.origen = origen;
         this.destino = destino;
         this.tipoVehiculo = tipoVehiculo;
@@ -30,23 +33,31 @@ class SolicitudDespacho {
     static crearInmediato(clienteId, origen, destino, tipoVehiculo) {
         return new SolicitudDespacho({
             solicitudId: randomUUID(),
-            clienteId: clienteId,
-            origen: origen,
-            destino: destino,
-            tipoVehiculo: tipoVehiculo,
+            clienteId: String(clienteId),
+            origen, destino, tipoVehiculo,
             tipoActivacion: "Inmediata",
-            estado: "pendiente"
+            reservaId: null,
+            estado: "pendiente",
+            conductorAsignadoId: null,
+            creadaEn: new Date(),
+            ofertaEnviadaEn: null
         });
     }
-    static crearReserva(clienteId, origen, destino, tipoVehiculo) {
-        return new SolicitudDespacho({
-            solicitudId: randomUUID(),
-            clienteId: clienteId,
-            origen: origen,
-            destino: destino,
-            tipoVehiculo: tipoVehiculo,
-            tipoActivacion: "Reserva",
-            estado: "pendiente"
-        });
+
+    toJSON() {
+        return {
+            solicitudId: this.solicitudId,
+            clienteId: this.clienteId,
+            origen: { lat: this.origen.lat, lng: this.origen.lng },
+            destino: { lat: this.destino.lat, lng: this.destino.lng },
+            tipoVehiculo: this.tipoVehiculo,
+            tipoActivacion: this.tipoActivacion,
+            reservaId: this.reservaId,
+            estado: this.estado,
+            conductorAsignadoId: this.conductorAsignadoId,
+            creadaEn: this.creadaEn instanceof Date ? this.creadaEn.toISOString() : this.creadaEn,
+            ofertaEnviadaEn: this.ofertaEnviadaEn ? new Date(this.ofertaEnviadaEn).toISOString() : null
+        };
     }
 }
+module.exports = SolicitudDespacho;
