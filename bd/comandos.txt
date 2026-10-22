@@ -1,0 +1,24 @@
+npm init -y
+npm install express
+npm install prisma@7 @prisma/client@7 --save-dev
+npm install @prisma/adapter-mariadb
+npx prisma init
+docker-compose up -d
+npx prisma db push
+npx prisma generate
+node index.js
+
+Para probar:
+
+* Crear una solicitud:
+    curl -X POST http://localhost:3000/solicitudes \
+    -H "Content-Type: application/json" \
+    -d '{
+      "idCliente": "cliente_123",
+      "origen": "Av. San Martín 1200",
+      "destino": "Facultad de Ingeniería",
+      "tipoVehiculo": "AUTO"
+    }'
+
+* "Cancelar" una solicitud:
+    curl -X PATCH http://localhost:3000/solicitudes/idCliente_solicitud/cancelar
