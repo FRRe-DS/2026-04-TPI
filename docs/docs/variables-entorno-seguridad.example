@@ -1,0 +1,18 @@
+# --- Seguridad (RNF-06: nada de secretos en el código) ---
+JWT_ALGORITMO=HS256
+JWT_SECRETO=cambiar-por-un-secreto-largo-de-al-menos-32-caracteres
+# Para RS256: JWT_ALGORITMO=RS256 y JWT_CLAVE_PUBLICA="-----BEGIN PUBLIC KEY-----..."
+# JWT_ISSUER=
+# JWT_AUDIENCE=
+JWT_CLAIM_IDENTIDAD=sub
+JWT_CLAIM_ROLES=roles
+# Claim con el conductor_id si M1 lo incluye (si no, consultar a M3)
+# JWT_CLAIM_CONDUCTOR=conductor_id
+
+# --- Servicio ---
+PORT=3000
+LOG_LEVEL=info
+BODY_LIMITE=10kb
+TRUST_PROXY=false
+RATE_LIMIT_VENTANA_MS=60000
+RATE_LIMIT_MAX=120
