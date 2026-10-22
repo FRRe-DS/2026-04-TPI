@@ -44,8 +44,8 @@
     const filtered = requests.filter(item => {
       const status = String(item.estado || "").toLowerCase();
       const matchesStatus = filter === "todos" ||
-        (filter === "pendiente" && status === "pendiente") ||
-        (filter === "otros" && status !== "pendiente");
+        (filter === "pendiente" && status.includes("pendiente")) ||
+        (filter === "otros" && !status.includes("pendiente"));
       const haystack = [
         item.solicitudId, item.clienteId, item.tipoVehiculo, item.estado,
         item.tipoActivacion, formatPoint(item.origen), formatPoint(item.destino)
@@ -54,7 +54,7 @@
     });
 
     $("total-count").textContent = requests.length;
-    $("pending-count").textContent = requests.filter(item => String(item.estado).toLowerCase() === "pendiente").length;
+    $("pending-count").textContent = requests.filter(item => String(item.estado).toLowerCase().includes("pendiente")).length;
     $("result-caption").textContent = `${filtered.length} resultado${filtered.length === 1 ? "" : "s"} de ${requests.length} solicitud${requests.length === 1 ? "" : "es"}`;
     $("shown-count").textContent = `${filtered.length} solicitud${filtered.length === 1 ? "" : "es"} visible${filtered.length === 1 ? "" : "s"}`;
     $("empty-state").hidden = filtered.length !== 0;
@@ -76,7 +76,7 @@
   async function loadRequests() {
     refreshButton.disabled = true;
     refreshButton.textContent = "Cargando…";
-    showNotice("Consultando la lista de pendientes del servidor…", "info");
+    showNotice("Consultando la base de datos…", "info");
     try {
       const response = await fetch("/api/solicitudes/pendientes", {
         headers: { "Accept": "application/json" },
@@ -88,9 +88,9 @@
       requests = data.solicitudes;
       render();
       if (requests.length === 0) {
-        showNotice("Conexión correcta: el servidor respondió, pero la lista de pendientes está vacía. Creá una solicitud y volvé a actualizar.", "info");
+        showNotice("Conexión correcta: el servidor respondió, pero la base de datos no contiene solicitudes. Creá una solicitud y volvé a actualizar.", "info");
       } else {
-        showNotice(`Conexión correcta: se encontraron ${requests.length} solicitud${requests.length === 1 ? "" : "es"} en la lista de pendientes.`, "success");
+        showNotice(`Conexión correcta: se encontraron ${requests.length} solicitud${requests.length === 1 ? "" : "es"} en la base de datos.`, "success");
       }
     } catch (error) {
       requests = [];
