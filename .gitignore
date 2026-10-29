@@ -1,1 +1,6 @@
-bd/node_modules
+# Variables de entorno
+.env
+**/.env
+
+# No subir dependencias
+node_modules/
