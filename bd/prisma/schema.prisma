@@ -1,8 +1,4 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
+// Esquema M5: solicitudes persistidas en MySQL mediante Prisma.
 generator client {
   provider = "prisma-client-js"
 }
@@ -12,11 +8,16 @@ datasource db {
 }
 
 model Solicitud {
-  idSolicitud    String   @id @default(uuid())
-  idCliente      String
-  origen         String
-  destino        String
-  tipoVehiculo   String
-  estado         String   @default("PENDIENTE_ASIGNACION")
-  tiempoCreacion DateTime @default(now())
+  idSolicitud   String   @id @default(uuid())
+  idCliente     String
+  origenLat     Float
+  origenLng     Float
+  destinoLat    Float
+  destinoLng    Float
+  tipoVehiculo  String
+  tipoActivacion String  @default("Inmediata")
+  reservaId     String?  @unique
+  conductorId   String?
+  estado        String   @default("PENDIENTE_ASIGNACION")
+  creadaEn      DateTime @default(now())
 }
