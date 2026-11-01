@@ -1,5 +1,4 @@
 (() => {
-  const CLIENTE_ID = "001";
   const initialCenter = [-27.451, -58.986];
 
   let vehicle = "AUTO";
@@ -10,6 +9,47 @@
   let destinationMarker = null;
 
   const $ = (id) => document.getElementById(id);
+
+  async function cargarDatosUsuario() {
+  try {
+    // Esperar a que Keycloak termine de autenticar al usuario.
+    await window.authReady;
+
+    // Obtener los datos del perfil guardados en Keycloak.
+    const perfil = await window.keycloak.loadUserProfile();
+
+    // Priorizar nombre y apellido.
+    const nombreCompleto = [
+      perfil.firstName,
+      perfil.lastName
+    ].filter(Boolean).join(" ").trim();
+
+    // Si no hay nombre y apellido, utilizar el nombre de usuario.
+    const nombre = nombreCompleto ||
+      perfil.username ||
+      window.keycloak.tokenParsed?.preferred_username ||
+      "Cliente";
+
+    $("client-name").textContent = nombre;
+
+    // Generar las iniciales para el avatar.
+    const iniciales = nombre
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map(palabra => palabra[0].toUpperCase())
+      .join("");
+
+    $("client-avatar").textContent = iniciales || "CL";
+
+  } catch (error) {
+    console.error("Error al cargar el perfil del usuario:", error);
+    $("client-name").textContent = "Cliente";
+  }
+}
+
+// Cargar los datos de la cuenta activa.
+cargarDatosUsuario();
 
   const originButton = $("choose-origin");
   const destinationButton = $("choose-destination");
@@ -142,7 +182,6 @@
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          clienteId: CLIENTE_ID,
           origen: origen,
           destino: destino,
           tipoVehiculo: vehicle,

@@ -16,8 +16,9 @@
       </a>
       <div class="sidebar-label">MENÚ PRINCIPAL</div>
       <nav class="side-nav" aria-label="Menú principal">
-        <a class="nav-item" href="/ventana-de-solicitud.html"><span class="nav-icon">＋</span><span>Nueva solicitud</span></a>
-        <a class="nav-item active" href="/solicitudes.html" aria-current="page"><span class="nav-icon">▤</span><span>Solicitudes creadas</span></a>
+        <a class="nav-item" data-role-link="cliente" href="/ventana-de-solicitud.html"><span class="nav-icon">＋</span><span>Nueva solicitud</span></a>
+        <a class="nav-item active" data-role-link="encargado" href="/solicitudes.html" aria-current="page"><span class="nav-icon">▤</span><span>Solicitudes creadas</span></a>
+        <a class="nav-item" data-role-link="administrador" href="/ventana-administrador.html"><span>Administrar usuarios</span></a>
       </nav>
       <div class="sidebar-bottom"><span class="help-icon">?</span><div><strong>Módulo M5</strong><small>Solicitud y Despacho</small></div></div>
     </aside>
@@ -29,7 +30,17 @@
           <h1>Solicitudes creadas</h1>
           <p class="subtitle">Consultá las solicitudes registradas en la lista de pendientes.</p>
         </div>
-        <a class="primary-link" href="/ventana-de-solicitud.html"><span>＋</span> Nueva solicitud</a>
+        <div class="header-actions">
+          <a class="primary-link" href="/ventana-de-solicitud.html"><span>＋</span> Nueva solicitud</a>
+          <div class="client-chip">
+            <span class="client-avatar" id="client-avatar">EN</span>
+            <span>
+              <small>ENCARGADO</small>
+              <strong id="client-name">Cargando usuario...</strong>
+            </span>
+          </div>
+          <button type="button" class="secondary-button" data-logout>Cerrar sesión</button>
+        </div>
       </header>
 
       <section class="stats-grid" aria-label="Resumen de solicitudes">
@@ -55,7 +66,7 @@
         <div id="notice" class="notice" role="status" aria-live="polite">Cargando datos desde el servidor…</div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Solicitud</th><th>Recorrido (coordenadas)</th><th>Vehículo</th><th>Activación</th><th>Creada</th><th>Estado</th></tr></thead>
+            <thead><tr><th>Solicitud</th><th>Recorrido (coordenadas)</th><th>Vehículo</th><th>Activación</th><th>Creada</th><th>Estado</th><th>Acciones</th></tr></thead>
             <tbody id="requests-body"></tbody>
           </table>
         </div>
@@ -70,6 +81,7 @@
       <footer class="footer"><span>Bajer Movilidad</span><span>Prototipo académico · M5</span></footer>
     </main>
   </div>
+  <script src="/js/auth.js"></script>
   <script src="/js/solicitudes.js"></script>
 </body>
 </html>

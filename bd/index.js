@@ -104,6 +104,19 @@ app.patch('/solicitudes/:id/cancelar', async (req, res) => {
   }
 });
 
+app.delete('/solicitudes/:id', async (req, res) => {
+  try {
+    const eliminada = await prisma.solicitud.delete({
+      where: { idSolicitud: req.params.id },
+    });
+    return res.status(200).json({ eliminado: true, solicitudId: eliminada.idSolicitud });
+  } catch (error) {
+    if (error.code === 'P2025') return res.status(404).json({ error: 'Solicitud no encontrada.' });
+    console.error('Error al eliminar solicitud:', error);
+    return res.status(500).json({ error: 'No se pudo eliminar la solicitud.' });
+  }
+});
+
 app.get('/health', async (_req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;

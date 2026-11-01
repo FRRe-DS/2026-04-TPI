@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Administrar usuarios | Bajer</title>
+  <link rel="stylesheet" href="/css/administrador.css">
+</head>
+<body>
+  <main class="panel">
+    <header><div><p class="eyebrow">BAJER · ADMINISTRACIÓN</p><h1>Usuarios registrados</h1><p>Asigná un permiso a cada usuario de Keycloak.</p></div><button data-logout>Cerrar sesión</button></header>
+    <nav><a data-role-link="cliente" href="/ventana-de-solicitud.html">Nueva solicitud</a><a data-role-link="encargado" href="/solicitudes.html">Solicitudes</a></nav>
+    <div id="message" role="status">Cargando usuarios…</div>
+    <div class="table-wrap"><table><thead><tr><th>Usuario</th><th>Nombre</th><th>Correo</th><th>Estado</th><th>Permiso</th></tr></thead><tbody id="users"></tbody></table></div>
+  </main>
+  <script src="/js/auth.js"></script><script src="/js/administrador.js"></script>
+</body>
+</html>

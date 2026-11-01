@@ -7,6 +7,30 @@
   const refreshButton = $("refresh-button");
   let requests = [];
 
+  async function loadOperatorProfile() {
+    try {
+      await window.authReady;
+      const profile = await window.keycloak.loadUserProfile();
+      const fullName = [profile.firstName, profile.lastName].filter(Boolean).join(" ").trim();
+      const name = fullName ||
+        profile.username ||
+        window.keycloak.tokenParsed?.preferred_username ||
+        "Encargado";
+
+      $("client-name").textContent = name;
+      $("client-avatar").textContent = name
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map(part => part[0].toLocaleUpperCase("es-AR"))
+        .join("") || "EN";
+    } catch (error) {
+      console.error("Error al cargar el perfil del encargado:", error);
+      $("client-name").textContent = "Encargado";
+      $("client-avatar").textContent = "EN";
+    }
+  }
+
   function showNotice(message, type = "info") {
     notice.className = `notice visible ${type}`;
     notice.textContent = message;
@@ -70,8 +94,34 @@
         <td>${escapeHtml(item.tipoActivacion || "—")}</td>
         <td>${escapeHtml(formatDate(created))}</td>
         <td><span class="status ${escapeHtml(status)}">${escapeHtml(item.estado || "Sin estado")}</span></td>
+        <td><button type="button" class="delete-button" data-delete-id="${escapeHtml(item.solicitudId || "")}" aria-label="Eliminar solicitud ${escapeHtml(item.solicitudId || "")}" ${item.solicitudId ? "" : "disabled"}>Eliminar</button></td>
       </tr>`;
     }).join("");
+  }
+  async function deleteRequest(button) {
+    const solicitudId = button.dataset.deleteId;
+    if (!solicitudId || !window.confirm(`¿Querés eliminar la solicitud ${solicitudId}? Esta acción no se puede deshacer.`)) {
+      return;
+    }
+
+    button.disabled = true;
+    button.textContent = "Eliminando…";
+    try {
+      const response = await fetch(`/api/solicitudes/${encodeURIComponent(solicitudId)}`, {
+        method: "DELETE",
+        headers: { "Accept": "application/json" }
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || `Error HTTP ${response.status}`);
+
+      requests = requests.filter(item => String(item.solicitudId) !== solicitudId);
+      render();
+      showNotice(`La solicitud ${solicitudId} fue eliminada de la base de datos.`, "success");
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = "Eliminar";
+      showNotice(`No se pudo eliminar la solicitud: ${error.message}`, "error");
+    }
   }
   async function loadRequests() {
     refreshButton.disabled = true;
@@ -104,5 +154,10 @@
   searchInput.addEventListener("input", render);
   statusFilter.addEventListener("change", render);
   refreshButton.addEventListener("click", loadRequests);
+  tbody.addEventListener("click", event => {
+    const button = event.target.closest("[data-delete-id]");
+    if (button) deleteRequest(button);
+  });
+  loadOperatorProfile();
   loadRequests();
 })();
