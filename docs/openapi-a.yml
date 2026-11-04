@@ -9,38 +9,217 @@ info:
 
   version: 1.0.0
 
-paths: {}
+paths: {
+  /solicitudes:
+      post:
+        summary: Crear una solicitud de viaje
+        description: Registra una nueva solicitud con estado PENDIENTE.
+
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Solicitud"  
+
+        responses:
+          "201":
+            description: Solicitud creada correctamente
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/Solicitud_Creada"
+
+          "422":
+            description: Error de validación de los datos enviados
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/ErrorDatosRecibidos"
+  /ofertas/:
+    post:
+      summary: Crear oferta con expiracion (RF 5.4)
+      description: Registra una nueva oferta enviada a un conductor asignando una fecha de expiracion.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - id_solicitud
+                - conductor_id
+                - tiempo_expiracion_seg
+              properties:
+                id_solicitud:
+                  type: string
+                  format: uuid
+                  description: ID de la solicitud asociada
+                conductor_id:
+                  type: string
+                  format: uuid
+                  description: ID del conductor destinatario
+                tiempo_expiracion_seg:
+                  type: integer
+                  minimum: 1
+                  default: 30
+                  description: Tiempo en segundos para que la oferta expire
+      responses:
+        "201":
+          description: Oferta creada con exito
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Oferta"
+        "422":
+          description: Error de validacion en los datos enviados
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+
+  /ofertas/{id_oferta}/respuesta:
+    patch:
+      summary: Aceptar o rechazar una oferta de conductor (RF 5.5)
+      description: >
+        Permite al cliente dueño de la solicitud aceptar o rechazar una oferta
+        PENDIENTE de un conductor. Al aceptar, la solicitud pasa a ACEPTADA.
+        Al rechazar, la solicitud vuelve a PENDIENTE para nueva asignación.
+        En ambos casos se registra el cambio en el historial de despacho.
+      parameters:
+        - name: id_oferta
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID único de la oferta a responder
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - cliente_id
+                - accion
+              properties:
+                cliente_id:
+                  type: string
+                  format: uuid
+                  description: ID del cliente dueño de la solicitud
+                accion:
+                  type: string
+                  enum:
+                    - ACEPTAR
+                    - RECHAZAR
+                  description: Acción a tomar sobre la oferta
+
+      responses:
+        "200":
+          description: Oferta respondida correctamente
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - id_oferta
+                  - id_solicitud
+                  - estado_oferta
+                  - estado_solicitud
+                  - mensaje
+                properties:
+                  id_oferta:
+                    type: string
+                    format: uuid
+                  id_solicitud:
+                    type: string
+                    format: uuid
+                  estado_oferta:
+                    type: string
+                    enum:
+                      - ACEPTADA
+                      - RECHAZADA
+                  estado_solicitud:
+                    type: string
+                    enum:
+                      - ACEPTADA
+                      - PENDIENTE
+                  mensaje:
+                    type: string
+
+        "403":
+          description: El cliente no es el dueño de la solicitud asociada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+
+        "404":
+          description: Oferta o solicitud no encontrada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+
+        "409":
+          description: La oferta ya fue respondida anteriormente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+
+        "422":
+          description: Error de validación de los datos enviados
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        loc:
+                          type: array
+                          items:
+                            type:
+                              - string
+                              - integer
+                        msg:
+                          type: string
+                        type:
+                          type: string
+}
 
 components:
-  securitySchemes:
-    tokenM1:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-      description: Token de acceso emitido por M1.
 
   schemas:
-    # Identidad autenticada obtenida a partir del token validado.
-    IdentidadAutenticada:
-      type: object
-      additionalProperties: false
-      required:
-        - identidad_id
-      properties:
-        identidad_id:
-          type: string
-          description: |
-            Identificador estable del usuario autenticado,
-            obtenido del token validado por M1.
-
+  
     # Consulta que M5 necesita realizar a M2.
     ConsultaCliente:
       type: object
       additionalProperties: false
       required:
-        - identidad_id
+        - Email
       properties:
-        identidad_id:
+        Email:
           type: string
           description: |
             Identificador de identidad que M2 utiliza
@@ -108,12 +287,16 @@ components:
               description: Nombre del cliente que realizó la solicitud.
 
             conductor_id:
-              type: string
+              type: 
+              - string
+              - "null"
               format: uuid
               description: Identificador del conductor que aceptó la solicitud.
 
             nombre_conductor:
-              type: string
+              type: 
+              - string
+              - "null"
               minLength: 1
               description: Nombre del conductor que aceptó la solicitud.
 
@@ -143,11 +326,13 @@ components:
             estado:
               type: string
               description: | 
-                Estado de la solicitud. puede ser uno de los siguientes valores: 
-                - PENDIENTE: La solicitud fue creada y está pendiente de aceptación por parte de un conductor.
-                - ACEPTADA: La solicitud fue aceptada por un conductor y está en curso.
-                - FINALIZADA: La solicitud fue completada y finalizada.
-                - CANCELADA: La solicitud fue cancelada por el cliente o el conductor. 
+                Estado de la solicitud. puede ser uno de los siguientes valores:
+                - pendiente: La solicitud fue creada y está esperando asignación
+                - finalizada: El viaje fue completado 
+                - buscando: Se están ofreciendo ofertas a conductores
+                - asignada: Un conductor aceptó y ganó
+                - cancelada: La canceló el cliente
+                - sin_disponibilidad: La búsqueda se agotó y no hay conductor
 
 # Solicitud de G1 a G2 para obtener los datos del conductor que aceptó la solicitud.
     SolicitarDatosConductor:
@@ -222,3 +407,46 @@ components:
         - AUTO
         - MOTO
 
+    Solicitud_Creada: 
+      type: object
+        required:
+          - mensaje
+          - solicitud_id
+          - estado
+        properties:
+          mensaje:
+            type: string
+          solicitud_id:
+            type: string
+            format: uuid
+          estado:
+            type: string
+            enum:
+              - PENDIENTE
+
+    ErrorDatosRecibidos:
+      type: object
+        required:
+          - detail
+        properties:
+          detail:
+            type: array
+            items:
+              type: object
+              required:
+                - loc
+                - msg
+                - type
+              properties:
+                loc:
+                  type: array
+                  items:
+                    type:
+                      - string
+                      - integer
+                msg:
+                  type: string
+                type:
+                  type: string
+                input:
+                  description: Valor recibido que produjo el error
