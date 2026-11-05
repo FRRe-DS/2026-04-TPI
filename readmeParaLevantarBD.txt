@@ -55,7 +55,7 @@ direccion: raíz(2026-04-TPI)
 
 npm install   ---- una vez
 
-node --env-file=src/front/.env src/front/servidor.js   -----tener .env en front importante
+node --env-file=front/.env front/servidor.js   -----tener .env en front importante
 
 
 //////////////////////////////////
@@ -113,4 +113,3 @@ Keycloak: http://localhost:8080
 MySQL: localhost:3306
 
 IMPORTANTE: Para utilizar el sistema deben estar activos Docker, MySQL, Keycloak, el backend y el frontend.
-

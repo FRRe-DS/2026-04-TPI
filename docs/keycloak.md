@@ -9,10 +9,10 @@
 5. En el cliente confidencial habilitá la evaluación de tokens (Service Accounts Enabled). El servidor usa ese cliente para introspección y para administrar los roles de usuarios.
 6. Asigná inicialmente el rol `administrador` a una cuenta desde la consola de Keycloak. Los usuarios que no tengan uno de los tres roles verán la pantalla de acceso denegado.
 
-Copiá `src/front/.env.example` como `src/front/.env` (o exportá esas variables en el entorno) y completá la URL, realm y secret. Iniciá el servidor de frontend desde la raíz:
+Copiá `front/.env.example` como `front/.env` (o exportá esas variables en el entorno) y completá la URL, realm y secret. Iniciá el servidor de frontend desde la raíz:
 
 ```powershell
-node --env-file=src/front/.env src/front/servidor.js
+node --env-file=front/.env front/servidor.js
 ```
 
 La interfaz usa el adaptador JavaScript que sirve la propia instancia Keycloak en `/js/keycloak.js`; el navegador debe poder acceder a esa URL.
