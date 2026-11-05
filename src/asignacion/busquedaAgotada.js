@@ -2,7 +2,6 @@
 const { validarDependencias } = require("./puertos");
 const { conReintentoPorDeadlock, conTimeout } = require("./transacciones");
 const { EstadoBusqueda, TipoEvento } = require("../comun/estados");
-const { MotivoLiberacion } = require("./notificaciones");
 const { liberarCandidatosPendientes } = require("./liberacion");
 
 // Regla pura (se prueba sin base de datos): la búsqueda está agotada cuando NO queda
@@ -47,7 +46,7 @@ async function procesarBusquedaAgotada({ solicitudId, motivo }, deps) {
     try {
       await conTimeout(
         Promise.resolve().then(() =>
-          liberarCandidatosPendientes({ solicitudId, motivo: MotivoLiberacion.SOLICITUD_CERRADA }, deps)
+          liberarCandidatosPendientes({ solicitudId }, deps)
         ),
         deps.timeoutAvisosMs ?? 3000
       );

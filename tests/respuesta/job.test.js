@@ -21,7 +21,6 @@ describe("job de vencimientos (RF-5.4, RNF-11)", () => {
     assert.deepEqual(resumen, { vencidas: 3, errores: 0, solicitudesEvaluadas: 1 });
     assert.deepEqual([...m.estado.ofertas.values()].map((o) => o.estado), ["vencida", "vencida", "vencida"]);
     assert.equal(m.espias.liberados.length, 3);
-    assert.ok(m.espias.liberados.every((l) => l.motivo === "oferta_vencida"));
     assert.equal(m.estado.solicitudes.get("sol-1").estado, "sin_disponibilidad");
     assert.equal(m.estado.eventos.filter((e) => e.tipo === "VENCIMIENTO").length, 3);
     assert.equal(m.estado.eventos.filter((e) => e.tipo === "BUSQUEDA").length, 1, "la señal sale una sola vez");

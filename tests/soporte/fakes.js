@@ -28,9 +28,8 @@ function crearMundo({ solicitudes = [], ofertas = [], busquedas = [], candidatos
   const espias = {
     cacheEliminado: [],
     conductorAsignado: [],
-    seleccionados: [],
     liberados: [],
-    fallar: { cache: false, conductorAsignado: false, seleccionado: false, liberar: false, liberarIds: [] },
+    fallar: { cache: false, conductorAsignado: false, liberar: false, liberarIds: [] },
   };
   let reloj = ahora;
 
@@ -221,10 +220,6 @@ function crearMundo({ solicitudes = [], ofertas = [], busquedas = [], candidatos
     async conductorAsignado(datos) {
       if (espias.fallar.conductorAsignado) throw new Error("M6 caído");
       espias.conductorAsignado.push(datos);
-    },
-    async conductorSeleccionado(datos) {
-      if (espias.fallar.seleccionado) throw new Error("M4 caído");
-      espias.seleccionados.push(datos);
     },
     // Como el real: devuelve los conductores liberados; si M4 falla con alguno, el error trae los que sí salieron.
     async liberarConductores(lista) {

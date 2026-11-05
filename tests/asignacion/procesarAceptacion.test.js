@@ -29,11 +29,9 @@ describe("Aceptación simple", () => {
     // Avisos externos: M6 una vez, M4 libera a los 2 perdedores, Redis limpia las 3 ofertas.
     assert.equal(m.espias.conductorAsignado.length, 1);
     assert.deepEqual(m.espias.liberados.map((l) => l.conductorId).sort(), ["cond-1", "cond-3"]);
-    assert.ok(m.espias.liberados.every((l) => l.motivo === "solicitud_cerrada"));
     assert.equal(m.espias.cacheEliminado.length, 3);
-
-    // M4: el ganador se confirma como seleccionado (una vez) y NO se libera.
-    assert.deepEqual(m.espias.seleccionados, [{ solicitudId: "sol-1", conductorId: "cond-2", ofertaId: "of-2" }]);
+    // El ganador NO se libera en M4: la aceptación se da solo a M3.
+    assert.ok(!m.espias.liberados.some((l) => l.conductorId === "cond-2"));
   });
 
   test("oferta inexistente y conductor que no es el de la oferta", async () => {
@@ -125,7 +123,6 @@ describe("Idempotencia (RNF-09)", () => {
     assert.equal(otra.resultado, R.ASIGNADA);
     assert.equal(otra.repetida, true);
     assert.equal(m.espias.conductorAsignado.length, 1);
-    assert.equal(m.espias.seleccionados.length, 1, "M4 se entera una sola vez");
     assert.equal(m.espias.liberados.length, 1);
   });
 
@@ -187,7 +184,6 @@ describe("Aceptación contra cancelación (RNF-08)", () => {
     assert.equal(r.ofertasCanceladas.length, 3);
     assert.equal(m.estado.busquedas.get("sol-1").estado, EstadoBusqueda.FINALIZADA);
     assert.equal(m.espias.liberados.length, 3);
-    assert.ok(m.espias.liberados.every((l) => l.motivo === "cancelada_por_cliente"));
     assert.equal(m.espias.cacheEliminado.length, 3);
   });
 });
@@ -240,16 +236,6 @@ describe("Avisos externos (RNF-13)", () => {
     assert.equal(r.resultado, R.ASIGNADA);
     assert.deepEqual(r.avisosFallidos.sort(), ["cacheOfertas", "conductorAsignado", "liberarConductores"]);
     assert.equal(m.estado.solicitudes.get("sol-1").estado, EstadoSolicitud.ASIGNADA);
-  });
-
-  test("si M4 no acepta al conductor seleccionado (ya no disponible), la asignación vale y queda como aviso fallido", async () => {
-    const m = escenarioConOfertas(2);
-    m.espias.fallar.seleccionado = true;
-    const r = await procesarAceptacion({ ofertaId: "of-1", conductorId: "cond-1" }, m.deps);
-    assert.equal(r.resultado, R.ASIGNADA);
-    assert.deepEqual(r.avisosFallidos, ["conductorSeleccionado"]);
-    assert.equal(m.estado.solicitudes.get("sol-1").estado, EstadoSolicitud.ASIGNADA);
-    assert.equal(m.espias.liberados.length, 1, "los perdedores se liberan igual");
   });
 
   test("un aviso que se cuelga no bloquea la respuesta (timeout)", async () => {

@@ -52,9 +52,7 @@
 //     Confirma si la función termina; deshace y relanza el error si lanza.
 // cacheOfertas.eliminar([ofertaId, ...])                       (Redis, RNF-11)
 // notificaciones.conductorAsignado({ solicitudId, conductorId, ofertaId })   (M6)
-// notificaciones.conductorSeleccionado({ solicitudId, conductorId, ofertaId })   (M4: el ganador pasa a "ocupado")
-// notificaciones.liberarConductores([{ solicitudId, conductorId, ofertaId, motivo }])  (M4)
-//     motivo: uno de MotivoLiberacion (oferta_rechazada | oferta_vencida | solicitud_cerrada | cancelada_por_cliente)
+// notificaciones.liberarConductores([{ solicitudId, conductorId }])  (M4: el mismo aviso "liberado" para todos, sin motivo)
 // reloj() -> Date           (opcional; para poder probar vencimientos)
 // logger                    (opcional)
 //
@@ -67,7 +65,7 @@ const REQUERIDOS = {
   eventos: ["registrar"],
   cacheOfertas: ["eliminar"],
   candidatos: ["pendientesDeLiberar", "marcarLiberados"],
-  notificaciones: ["conductorAsignado", "conductorSeleccionado", "liberarConductores"],
+  notificaciones: ["conductorAsignado", "liberarConductores"],
 };
 
 function validarDependencias(deps) {
