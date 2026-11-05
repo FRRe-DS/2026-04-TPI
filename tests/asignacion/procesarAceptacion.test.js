@@ -29,12 +29,16 @@ describe("Aceptación simple", () => {
     // Avisos externos: M6 una vez, M4 libera a los 2 perdedores, Redis limpia las 3 ofertas.
     assert.equal(m.espias.conductorAsignado.length, 1);
     assert.deepEqual(m.espias.liberados.map((l) => l.conductorId).sort(), ["cond-1", "cond-3"]);
+    assert.ok(m.espias.liberados.every((l) => l.motivo === "solicitud_cerrada"));
     assert.equal(m.espias.cacheEliminado.length, 3);
+
+    // M4: el ganador se confirma como seleccionado (una vez) y NO se libera.
+    assert.deepEqual(m.espias.seleccionados, [{ solicitudId: "sol-1", conductorId: "cond-2", ofertaId: "of-2" }]);
   });
 
   test("oferta inexistente y conductor que no es el de la oferta", async () => {
     const m = escenarioConOfertas(1);
-    assert.equal((await procesarAceptacion({ ofertaId: "nada", conductorId: "cond-1" }, m.deps)).resultado, R.OFERTA_INEXISTENTE);
+    assert.equal((await procesarAceptacion({ ofertaId: "nada", conductorId: "cond-1" }, m.deps)).resultado, R.NO_ENCONTRADO);
     assert.equal((await procesarAceptacion({ ofertaId: "of-1", conductorId: "otro" }, m.deps)).resultado, R.CONDUCTOR_NO_AUTORIZADO);
     assert.equal(m.estado.solicitudes.get("sol-1").estado, EstadoSolicitud.BUSCANDO);
   });
@@ -66,7 +70,8 @@ describe("Asignación única bajo concurrencia (RF-5.6, RNF-08, RNF-07)", () => 
 
       const lista = resultados.map((r) => r.resultado);
       assert.equal(contar(lista, R.ASIGNADA), 1, `vuelta ${vuelta}: debe haber un único ganador`);
-      assert.equal(contar(lista, R.YA_ASIGNADA), N - 1, `vuelta ${vuelta}: el resto debe recibir YA_ASIGNADA`);
+      assert.equal(contar(lista, R.SOLICITUD_NO_DISPONIBLE), N - 1, `vuelta ${vuelta}: el resto debe recibir SOLICITUD_NO_DISPONIBLE`);
+      assert.ok(resultados.filter((r) => r.resultado === R.SOLICITUD_NO_DISPONIBLE).every((r) => r.motivo === "ya_asignada"), `vuelta ${vuelta}: con motivo YA_ASIGNADA`);
 
       const ganador = resultados.find((r) => r.resultado === R.ASIGNADA).conductorId;
       assert.equal(m.estado.solicitudes.get("sol-1").conductorAsignadoId, ganador);
@@ -120,23 +125,26 @@ describe("Idempotencia (RNF-09)", () => {
     assert.equal(otra.resultado, R.ASIGNADA);
     assert.equal(otra.repetida, true);
     assert.equal(m.espias.conductorAsignado.length, 1);
+    assert.equal(m.espias.seleccionados.length, 1, "M4 se entera una sola vez");
     assert.equal(m.espias.liberados.length, 1);
   });
 
-  test("un conductor que llega tarde recibe YA_ASIGNADA (no 'oferta vencida')", async () => {
+  test("un conductor que llega tarde recibe SOLICITUD_NO_DISPONIBLE / YA_ASIGNADA (no 'oferta vencida')", async () => {
     const m = escenarioConOfertas(2);
     await procesarAceptacion({ ofertaId: "of-1", conductorId: "cond-1" }, m.deps);
     const tarde = await procesarAceptacion({ ofertaId: "of-2", conductorId: "cond-2" }, m.deps);
-    assert.equal(tarde.resultado, R.YA_ASIGNADA);
+    assert.equal(tarde.resultado, R.SOLICITUD_NO_DISPONIBLE);
+    assert.equal(tarde.motivo, "ya_asignada");
   });
 });
 
 describe("Aceptación contra cancelación (RNF-08)", () => {
-  test("si el cliente cancela primero, el conductor recibe SOLICITUD_CANCELADA y todo queda intacto", async () => {
+  test("si el cliente cancela primero, el conductor recibe SOLICITUD_NO_DISPONIBLE / SOLICITUD_CANCELADA y todo queda intacto", async () => {
     const m = escenarioConOfertas(1);
     assert.equal(await m.cancelarSolicitud("sol-1"), true);
     const r = await procesarAceptacion({ ofertaId: "of-1", conductorId: "cond-1" }, m.deps);
-    assert.equal(r.resultado, R.SOLICITUD_CANCELADA);
+    assert.equal(r.resultado, R.SOLICITUD_NO_DISPONIBLE);
+    assert.equal(r.motivo, "solicitud_cancelada");
     assert.equal(m.estado.solicitudes.get("sol-1").estado, EstadoSolicitud.CANCELADA);
     assert.equal(m.estado.ofertas.get("of-1").estado, EstadoOferta.PENDIENTE);
     assert.equal(m.espias.conductorAsignado.length, 0);
@@ -162,7 +170,8 @@ describe("Aceptación contra cancelación (RNF-08)", () => {
 
       if (porNombre.cancela === true) {
         assert.equal(sol.estado, EstadoSolicitud.CANCELADA);
-        assert.equal(porNombre.acepta.resultado, R.SOLICITUD_CANCELADA);
+        assert.equal(porNombre.acepta.resultado, R.SOLICITUD_NO_DISPONIBLE);
+        assert.equal(porNombre.acepta.motivo, "solicitud_cancelada");
         assert.equal(m.estado.ofertas.get("of-1").estado, EstadoOferta.PENDIENTE);
       } else {
         assert.equal(sol.estado, EstadoSolicitud.ASIGNADA);
@@ -178,6 +187,7 @@ describe("Aceptación contra cancelación (RNF-08)", () => {
     assert.equal(r.ofertasCanceladas.length, 3);
     assert.equal(m.estado.busquedas.get("sol-1").estado, EstadoBusqueda.FINALIZADA);
     assert.equal(m.espias.liberados.length, 3);
+    assert.ok(m.espias.liberados.every((l) => l.motivo === "cancelada_por_cliente"));
     assert.equal(m.espias.cacheEliminado.length, 3);
   });
 });
@@ -230,6 +240,16 @@ describe("Avisos externos (RNF-13)", () => {
     assert.equal(r.resultado, R.ASIGNADA);
     assert.deepEqual(r.avisosFallidos.sort(), ["cacheOfertas", "conductorAsignado", "liberarConductores"]);
     assert.equal(m.estado.solicitudes.get("sol-1").estado, EstadoSolicitud.ASIGNADA);
+  });
+
+  test("si M4 no acepta al conductor seleccionado (ya no disponible), la asignación vale y queda como aviso fallido", async () => {
+    const m = escenarioConOfertas(2);
+    m.espias.fallar.seleccionado = true;
+    const r = await procesarAceptacion({ ofertaId: "of-1", conductorId: "cond-1" }, m.deps);
+    assert.equal(r.resultado, R.ASIGNADA);
+    assert.deepEqual(r.avisosFallidos, ["conductorSeleccionado"]);
+    assert.equal(m.estado.solicitudes.get("sol-1").estado, EstadoSolicitud.ASIGNADA);
+    assert.equal(m.espias.liberados.length, 1, "los perdedores se liberan igual");
   });
 
   test("un aviso que se cuelga no bloquea la respuesta (timeout)", async () => {

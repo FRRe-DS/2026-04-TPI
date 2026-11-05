@@ -1,0 +1,102 @@
+// MODELOS DE B (ofertas, búsqueda, eventos) para MySQL con Prisma.
+//
+// CÓMO USARLO: este archivo trae SOLO los modelos y enums que usa src/respuesta y
+// src/asignacion. Pegalos al final del schema.prisma que use el grupo (hoy bd/prisma/schema.prisma,
+// de Lucas), debajo de `model Solicitud`, y corré: npx prisma db push  &&  npx prisma generate
+// (o npx prisma migrate dev --name ofertas, si se quieren migraciones versionadas).
+//
+// REGLAS:
+//  - Los valores de los enums son IDÉNTICOS a src/comun/estados.js (snake_case minúscula). El código compara texto
+//    contra texto: si acá dice "Pendiente" y allá "pendiente", el `WHERE estado = ...` nunca
+//    coincide y la asignación falla en silencio.
+//  - Los nombres de campo son los que lee el código (ofertaId, solicitudId, conductorId, estado,
+//    venceEn, candidatosRestantes...). Si los cambiás, hay que cambiar src/respuesta.
+//
+// PENDIENTE DE DEFINIR CON EL EQUIPO (no inventado acá):
+//  - Relación con Solicitud: hoy `solicitudId` es un texto sin clave foránea porque el modelo
+//    Solicitud es de A y todavía cambia. Cuando se cierre, agregar @relation (y revisar que el
+//    estado de Solicitud use buscando/asignada/cancelada/sin_disponibilidad (minúscula), ver src/comun/estados.js).
+//  - Evento: lo define A; esta es una PROPUESTA con los campos que registra el código.
+//  - Formato de conductorId: depende de M3 (no se fija a UUID).
+
+enum EstadoOferta {
+  pendiente
+  aceptada
+  rechazada
+  vencida
+  cancelada
+}
+
+enum EstadoBusqueda {
+  activa
+  agotada
+  finalizada
+}
+
+enum TipoEvento {
+  BUSQUEDA
+  OFERTA
+  RECHAZO
+  VENCIMIENTO
+  ACEPTACION
+  CANCELACION
+}
+
+model Oferta {
+  ofertaId      String       @id @default(uuid())
+  solicitudId   String
+  conductorId   String
+  estado        EstadoOferta @default(pendiente)
+  enviadaEn     DateTime     @default(now())
+  venceEn       DateTime
+  respondidaEn  DateTime?
+
+  // Las dos consultas de cada asignación: cancelar hermanas y contar pendientes.
+  @@index([solicitudId, estado])
+  // El job de vencimientos: pendientes cuyo venceEn ya pasó.
+  @@index([estado, venceEn])
+  // Lo pide la consigna. Es redundante (ofertaId ya es único). Si la intención es que un conductor
+  // no reciba dos ofertas de la misma solicitud, sería @@unique([solicitudId, conductorId]), pero con
+  // varias rondas de búsqueda puede recibir otra legítimamente: hablarlo con Lautaro, que crea ofertas.
+  @@unique([ofertaId, conductorId])
+}
+
+model Busqueda {
+  busquedaId          String         @id @default(uuid())
+  solicitudId         String
+  estado              EstadoBusqueda @default(activa)
+  venceEn             DateTime
+  candidatosRestantes Int
+
+  @@index([solicitudId, estado])
+}
+
+// Lista que devolvió M4 para una solicitud. M4 reserva a TODOS los de la lista, así que al cerrar la
+// búsqueda hay que liberar a los que no salieron antes (rechazo o vencimiento), salvo al ganador.
+// `ronda` permite volver a pedir la lista (p. ej. si el conductor cancela) sin pisar la anterior.
+model Candidato {
+  solicitudId  String
+  ronda        Int       @default(1)
+  conductorId  String
+  distanciaM   Float
+  tipoVehiculo String
+  posicion     Int
+  obtenidoEn   DateTime  @default(now())
+  liberadoEn   DateTime?
+
+  @@id([solicitudId, ronda, conductorId])
+  // "Los de esta solicitud que siguen sin liberar".
+  @@index([solicitudId, liberadoEn])
+}
+
+model Evento {
+  eventoId    String     @id @default(uuid())
+  solicitudId String
+  tipo        TipoEvento
+  conductorId String?
+  ofertaId    String?
+  ocurridoEn  DateTime
+  detalle     String?
+
+  @@index([solicitudId, ocurridoEn])
+}

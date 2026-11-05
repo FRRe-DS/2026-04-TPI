@@ -1,26 +1,26 @@
 // Enumeraciones compartidas de M5 (según el diagrama de clases).
 // Viven en `comun` para que A y B usen EXACTAMENTE los mismos valores y nadie
-// vuelva a definirlos (ni escriba "pendiente" en minúscula en otro lado).
+// vuelva a definirlos. Los valores van en snake_case minúscula (ej.: "sin_disponibilidad").
 const EstadoSolicitud = Object.freeze({
-  PENDIENTE: "PENDIENTE",
-  BUSCANDO: "BUSCANDO",
-  ASIGNADA: "ASIGNADA",
-  CANCELADA: "CANCELADA",
-  SIN_DISPONIBILIDAD: "SIN_DISPONIBILIDAD",
+  PENDIENTE: "pendiente",
+  BUSCANDO: "buscando",
+  ASIGNADA: "asignada",
+  CANCELADA: "cancelada",
+  SIN_DISPONIBILIDAD: "sin_disponibilidad",
 });
 
 const EstadoOferta = Object.freeze({
-  PENDIENTE: "PENDIENTE",
-  ACEPTADA: "ACEPTADA",
-  RECHAZADA: "RECHAZADA",
-  VENCIDA: "VENCIDA",
-  CANCELADA: "CANCELADA",
+  PENDIENTE: "pendiente",
+  ACEPTADA: "aceptada",
+  RECHAZADA: "rechazada",
+  VENCIDA: "vencida",
+  CANCELADA: "cancelada",
 });
 
 const EstadoBusqueda = Object.freeze({
-  ACTIVA: "ACTIVA",
-  AGOTADA: "AGOTADA",
-  FINALIZADA: "FINALIZADA",
+  ACTIVA: "activa",
+  AGOTADA: "agotada",
+  FINALIZADA: "finalizada",
 });
 
 const TipoEvento = Object.freeze({

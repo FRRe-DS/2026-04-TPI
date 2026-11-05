@@ -10,7 +10,7 @@ const jwt = require("jsonwebtoken");
 const { leerConfig, crearLogger, crearVerificadorLocal, crearApp, ROLES } = require("../../src/comun");
 const { procesarCancelacionSolicitud } = require("../../src/asignacion");
 const { escenarioConOfertas } = require("./fakes");
-const { crearRouterRespuesta } = require("./routerEjemplo");
+const { crearRouterRespuesta, iniciarJobVencimientos } = require("../../src/respuesta");
 
 const SECRETO = process.env.JWT_SECRETO ?? "secreto-solo-para-probar-en-local-0123456789";
 const PUERTO = Number(process.env.PORT ?? 3000);
@@ -36,17 +36,25 @@ function sembrar() {
   mundo.estado.solicitudes.clear();
   mundo.estado.ofertas.clear();
   mundo.estado.busquedas.clear();
+  mundo.estado.candidatos.clear();
   mundo.estado.eventos.length = 0;
-  for (const k of ["cacheEliminado", "conductorAsignado", "liberados"]) mundo.espias[k].length = 0;
-  mundo.estado.solicitudes.set("sol-1", { solicitudId: "sol-1", estado: "BUSCANDO", conductorAsignadoId: null });
+  for (const k of ["cacheEliminado", "conductorAsignado", "seleccionados", "liberados"]) mundo.espias[k].length = 0;
+  mundo.estado.solicitudes.set("sol-1", { solicitudId: "sol-1", estado: "buscando", conductorAsignadoId: null });
   mundo.estado.busquedas.set("sol-1", {
-    busquedaId: "bus-1", solicitudId: "sol-1", estado: "ACTIVA", venceEn, candidatosRestantes: 3,
+    busquedaId: "bus-1", solicitudId: "sol-1", estado: "activa", venceEn, candidatosRestantes: Number(process.env.CANDIDATOS ?? 3),
   });
   for (const o of OFERTAS) {
-    mundo.estado.ofertas.set(o.ofertaId, { ...o, solicitudId: "sol-1", estado: "PENDIENTE", venceEn });
+    mundo.estado.ofertas.set(o.ofertaId, { ...o, solicitudId: "sol-1", estado: "pendiente", venceEn });
+  }
+  // La lista que "devolvió M4" (y que M4 reservó): los 3 con oferta + `CANDIDATOS` más que nunca reciben oferta.
+  const sinOferta = Array.from({ length: Number(process.env.CANDIDATOS ?? 3) }, (_, i) => `cond-extra-${i + 1}`);
+  for (const conductorId of [...OFERTAS.map((o) => o.conductorId), ...sinOferta]) {
+    mundo.estado.candidatos.set(`sol-1:${conductorId}`, { solicitudId: "sol-1", conductorId, liberadoEn: null });
   }
 }
 sembrar();
+// El job corre solo cada 60 s; para probarlo a mano se dispara con POST /debug/vencer-ofertas.
+const job = iniciarJobVencimientos({ deps: mundo.deps, intervaloMs: 60_000, logger });
 
 // ── Tokens de prueba (en producción los emite M1) ──
 const firmar = (claims) =>
@@ -68,9 +76,11 @@ function registrarRutas(app, { requerirRol, validar }) {
       solicitudes: [...mundo.estado.solicitudes.values()],
       ofertas: [...mundo.estado.ofertas.values()].map(({ ofertaId, conductorId, estado }) => ({ ofertaId, conductorId, estado })),
       busquedas: [...mundo.estado.busquedas.values()],
+      reservadosEnM4: [...mundo.estado.candidatos.values()].filter((c) => !c.liberadoEn).map((c) => c.conductorId),
       eventos: mundo.estado.eventos,
       avisos: {
         conductorAsignado: mundo.espias.conductorAsignado,
+        seleccionados: mundo.espias.seleccionados,
         liberados: mundo.espias.liberados,
         cacheEliminado: mundo.espias.cacheEliminado,
       },
@@ -87,6 +97,15 @@ function registrarRutas(app, { requerirRol, validar }) {
     } catch (e) { return next(e); }
   });
 
+  // Hace vencer todas las ofertas pendientes (plazo en el pasado) y corre un ciclo del job.
+  app.post("/debug/vencer-ofertas", requerirRol(ROLES.ADMINISTRADOR), async (req, res, next) => {
+    try {
+      const pasado = new Date(Date.now() - 1000);
+      for (const o of mundo.estado.ofertas.values()) if (o.estado === "pendiente") o.venceEn = pasado;
+      res.json({ ciclo: await job.ciclo() });
+    } catch (e) { next(e); }
+  });
+
   app.post("/debug/reiniciar", requerirRol(ROLES.ADMINISTRADOR), (req, res) => {
     sembrar();
     res.json({ reiniciado: true });
@@ -100,4 +119,4 @@ const servidor = app.listen(PUERTO, "127.0.0.1", () => {
   for (const [nombre, t] of Object.entries(tokens)) console.log(`TOKEN_${nombre}=${t}`);
   console.log("");
 });
-process.on("SIGINT", () => servidor.close(() => process.exit(0)));
+process.on("SIGINT", () => { job.detener(); servidor.close(() => process.exit(0)); });

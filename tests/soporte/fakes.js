@@ -10,23 +10,27 @@ const {
   EstadoOferta,
   EstadoBusqueda,
 } = require("../../src/comun/estados");
-const { ResultadoAsignacion: R } = require("../../src/asignacion/resultados");
+// El puerto de A devuelve el vocabulario DETALLADO; la simplificación a 5 códigos la hace B.
+const { ResultadoPuertoAsignacion: R } = require("../../src/asignacion/resultados");
 
 const pausa = (max = 3) => new Promise((r) => setTimeout(r, Math.random() * max));
 const copia = (x) => (x ? structuredClone(x) : null);
 
-function crearMundo({ solicitudes = [], ofertas = [], busquedas = [], ahora = new Date("2026-10-20T12:00:00Z") } = {}) {
+function crearMundo({ solicitudes = [], ofertas = [], busquedas = [], candidatos = [], ahora = new Date("2026-10-20T12:00:00Z") } = {}) {
   const estado = {
     solicitudes: new Map(solicitudes.map((s) => [s.solicitudId, { ...s }])),
     ofertas: new Map(ofertas.map((o) => [o.ofertaId, { ...o }])),
     busquedas: new Map(busquedas.map((b) => [b.solicitudId, { ...b }])),
+    // Lista que devolvió M4 (reservada en M4). Clave: solicitud + conductor.
+    candidatos: new Map(candidatos.map((c) => [`${c.solicitudId}:${c.conductorId}`, { liberadoEn: null, ...c }])),
     eventos: [],
   };
   const espias = {
     cacheEliminado: [],
     conductorAsignado: [],
+    seleccionados: [],
     liberados: [],
-    fallar: { cache: false, conductorAsignado: false, liberar: false },
+    fallar: { cache: false, conductorAsignado: false, seleccionado: false, liberar: false, liberarIds: [] },
   };
   let reloj = ahora;
 
@@ -41,6 +45,7 @@ function crearMundo({ solicitudes = [], ofertas = [], busquedas = [], ahora = ne
       solicitudes: estado.solicitudes,
       ofertas: estado.ofertas,
       busquedas: estado.busquedas,
+      candidatos: estado.candidatos,
       eventos: estado.eventos,
     });
     try {
@@ -113,6 +118,32 @@ function crearMundo({ solicitudes = [], ofertas = [], busquedas = [], ahora = ne
       if (ok) o.estado = EstadoOferta.ACEPTADA;
       return { aceptada: Boolean(ok) };
     },
+    async rechazar({ ofertaId, conductorId, ahora }) {
+      await pausa();
+      const o = estado.ofertas.get(ofertaId);
+      const ok =
+        o &&
+        o.estado === EstadoOferta.PENDIENTE &&
+        o.conductorId === conductorId &&
+        new Date(o.venceEn) > ahora;
+      if (ok) o.estado = EstadoOferta.RECHAZADA;
+      return { rechazada: Boolean(ok) };
+    },
+    // Para el job de vencimientos: pendientes cuyo plazo ya pasó.
+    async listarVencidas({ ahora, lote = 100 }) {
+      await pausa();
+      return [...estado.ofertas.values()]
+        .filter((o) => o.estado === EstadoOferta.PENDIENTE && new Date(o.venceEn) <= ahora)
+        .slice(0, lote)
+        .map(({ ofertaId, solicitudId, conductorId }) => ({ ofertaId, solicitudId, conductorId }));
+    },
+    async vencer({ ofertaId, ahora }) {
+      await pausa();
+      const o = estado.ofertas.get(ofertaId);
+      const ok = o && o.estado === EstadoOferta.PENDIENTE && new Date(o.venceEn) <= ahora;
+      if (ok) o.estado = EstadoOferta.VENCIDA;
+      return { vencida: Boolean(ok) };
+    },
     async cancelarPendientesDeSolicitud({ solicitudId, exceptoOfertaId = null }) {
       await pausa();
       const canceladas = [];
@@ -126,8 +157,12 @@ function crearMundo({ solicitudes = [], ofertas = [], busquedas = [], ahora = ne
     },
     async contarPendientes(solicitudId) {
       await pausa();
+      // Igual que el repositorio real: solo cuentan las pendientes VIGENTES (venceEn > ahora).
       return [...estado.ofertas.values()].filter(
-        (o) => o.solicitudId === solicitudId && o.estado === EstadoOferta.PENDIENTE
+        (o) =>
+          o.solicitudId === solicitudId &&
+          o.estado === EstadoOferta.PENDIENTE &&
+          new Date(o.venceEn) > reloj
       ).length;
     },
   };
@@ -144,6 +179,28 @@ function crearMundo({ solicitudes = [], ofertas = [], busquedas = [], ahora = ne
       if (!b || b.estado !== EstadoBusqueda.ACTIVA) return false;
       b.estado = nuevo;
       return true;
+    },
+  };
+
+  const candidatosPuerto = {
+    async guardar({ solicitudId, lista }) {
+      for (const c of lista) {
+        const clave = `${solicitudId}:${c.conductorId}`;
+        if (!estado.candidatos.has(clave)) estado.candidatos.set(clave, { solicitudId, conductorId: c.conductorId, liberadoEn: null });
+      }
+    },
+    async pendientesDeLiberar({ solicitudId, exceptoConductorId }) {
+      return [...estado.candidatos.values()]
+        .filter((c) => c.solicitudId === solicitudId && !c.liberadoEn && c.conductorId !== exceptoConductorId)
+        .map((c) => c.conductorId);
+    },
+    async marcarLiberados({ solicitudId, conductorIds, ahora }) {
+      let marcados = 0;
+      for (const id of conductorIds) {
+        const c = estado.candidatos.get(`${solicitudId}:${id}`);
+        if (c && !c.liberadoEn) { c.liberadoEn = ahora ?? reloj; marcados += 1; }
+      }
+      return { marcados };
     },
   };
 
@@ -165,9 +222,19 @@ function crearMundo({ solicitudes = [], ofertas = [], busquedas = [], ahora = ne
       if (espias.fallar.conductorAsignado) throw new Error("M6 caído");
       espias.conductorAsignado.push(datos);
     },
+    async conductorSeleccionado(datos) {
+      if (espias.fallar.seleccionado) throw new Error("M4 caído");
+      espias.seleccionados.push(datos);
+    },
+    // Como el real: devuelve los conductores liberados; si M4 falla con alguno, el error trae los que sí salieron.
     async liberarConductores(lista) {
-      if (espias.fallar.liberar) throw new Error("M4 caído");
-      espias.liberados.push(...lista);
+      if (espias.fallar.liberar) throw Object.assign(new Error("M4 caído"), { liberados: [] });
+      const ok = lista.filter((i) => !espias.fallar.liberarIds.includes(i.conductorId));
+      espias.liberados.push(...ok);
+      if (ok.length < lista.length) {
+        throw Object.assign(new Error("M4 falló con algunos"), { liberados: ok.map((i) => i.conductorId) });
+      }
+      return ok.map((i) => i.conductorId);
     },
   };
 
@@ -176,6 +243,7 @@ function crearMundo({ solicitudes = [], ofertas = [], busquedas = [], ahora = ne
     solicitudes: solicitudesPuerto,
     ofertas: ofertasPuerto,
     busquedas: busquedasPuerto,
+    candidatos: candidatosPuerto,
     eventos: eventosPuerto,
     cacheOfertas,
     notificaciones,
@@ -193,7 +261,8 @@ function crearMundo({ solicitudes = [], ofertas = [], busquedas = [], ahora = ne
 }
 
 // Escenario típico: una solicitud en BUSCANDO con `n` ofertas pendientes (un conductor por oferta).
-function escenarioConOfertas(n, { venceEn = new Date("2026-10-20T12:05:00Z"), candidatosRestantes = 3 } = {}) {
+// `sinOferta` = cuántos candidatos más devolvió M4 que nunca recibieron oferta (también quedan reservados).
+function escenarioConOfertas(n, { venceEn = new Date("2026-10-20T12:05:00Z"), candidatosRestantes = 3, sinOferta = 0 } = {}) {
   const solicitudId = "sol-1";
   const ofertas = Array.from({ length: n }, (_, i) => ({
     ofertaId: `of-${i + 1}`,
@@ -202,9 +271,14 @@ function escenarioConOfertas(n, { venceEn = new Date("2026-10-20T12:05:00Z"), ca
     estado: EstadoOferta.PENDIENTE,
     venceEn,
   }));
+  const candidatos = [
+    ...ofertas.map((o) => ({ solicitudId, conductorId: o.conductorId })),
+    ...Array.from({ length: sinOferta }, (_, i) => ({ solicitudId, conductorId: `cond-extra-${i + 1}` })),
+  ];
   return crearMundo({
     solicitudes: [{ solicitudId, estado: EstadoSolicitud.BUSCANDO, conductorAsignadoId: null }],
     ofertas,
+    candidatos,
     busquedas: [
       {
         busquedaId: "bus-1",

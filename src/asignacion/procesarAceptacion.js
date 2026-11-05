@@ -5,8 +5,16 @@
 // Todo el cambio (solicitud + oferta + ofertas hermanas + búsqueda + eventos) va en
 // UNA transacción: si algo falla o perdemos la carrera, se deshace completo.
 // Los avisos externos (Redis, M4, M6) se hacen DESPUÉS de confirmar, nunca adentro.
-const { ResultadoAsignacion: R } = require("./resultados");
+const {
+  ResultadoAsignacion: R,
+  MotivoNoDisponible: Motivo,
+  ResultadoPuertoAsignacion: RA,
+  noDisponible,
+  traducirResultadoPuerto,
+} = require("./resultados");
 const { validarDependencias } = require("./puertos");
+const { MotivoLiberacion } = require("./notificaciones");
+const { liberarCandidatosPendientes } = require("./liberacion");
 const { RevertirTransaccion, conReintentoPorDeadlock, conTimeout } = require("./transacciones");
 const {
   EstadoSolicitud,
@@ -24,14 +32,15 @@ function ofertaVigente(oferta, ahora) {
 // Si la oferta no sirve, le explicamos al conductor POR QUÉ mirando la solicitud.
 async function explicarOfertaNoVigente(solicitudId, deps) {
   const solicitud = await deps.solicitudes.obtenerEstado(solicitudId);
-  if (solicitud?.estado === EstadoSolicitud.ASIGNADA) return R.YA_ASIGNADA;
-  if (solicitud?.estado === EstadoSolicitud.CANCELADA) return R.SOLICITUD_CANCELADA;
-  return R.OFERTA_NO_VIGENTE;
+  if (solicitud?.estado === EstadoSolicitud.ASIGNADA) return noDisponible(Motivo.YA_ASIGNADA);
+  if (solicitud?.estado === EstadoSolicitud.CANCELADA) return noDisponible(Motivo.SOLICITUD_CANCELADA);
+  return { resultado: R.OFERTA_NO_VIGENTE };
 }
 
 // Caso "repetición": el MISMO conductor ya ganó (reintento o doble clic). Devolvemos
 // el mismo éxito sin repetir efectos ni avisos. Si no, devolvemos el resultado original.
 async function resolverRepeticion({ ofertaId, conductorId, solicitudId, resultadoOriginal }, deps) {
+  // `resultadoOriginal` ya viene simplificado: { resultado, motivo? }.
   const oferta = await deps.ofertas.obtenerPorId(ofertaId);
   if (oferta && oferta.estado === EstadoOferta.ACEPTADA && oferta.conductorId === conductorId) {
     const solicitud = await deps.solicitudes.obtenerEstado(solicitudId);
@@ -43,7 +52,7 @@ async function resolverRepeticion({ ofertaId, conductorId, solicitudId, resultad
       return { resultado: R.ASIGNADA, solicitudId, conductorId, ofertaId, repetida: true };
     }
   }
-  return { resultado: resultadoOriginal, solicitudId };
+  return { ...resultadoOriginal, solicitudId };
 }
 
 async function procesarAceptacion({ ofertaId, conductorId }, deps) {
@@ -54,18 +63,18 @@ async function procesarAceptacion({ ofertaId, conductorId }, deps) {
 
   // 1) Pre-validación barata, SIN transacción ni bloqueos: descarta lo evidente.
   const oferta = await ofertas.obtenerPorId(ofertaId);
-  if (!oferta) return { resultado: R.OFERTA_INEXISTENTE };
+  if (!oferta) return { resultado: R.NO_ENCONTRADO };
   if (oferta.conductorId !== conductorId) return { resultado: R.CONDUCTOR_NO_AUTORIZADO };
   const solicitudId = oferta.solicitudId;
 
   if (oferta.estado === EstadoOferta.ACEPTADA) {
     return resolverRepeticion(
-      { ofertaId, conductorId, solicitudId, resultadoOriginal: R.YA_ASIGNADA },
+      { ofertaId, conductorId, solicitudId, resultadoOriginal: noDisponible(Motivo.YA_ASIGNADA) },
       deps
     );
   }
   if (!ofertaVigente(oferta, ahora)) {
-    return { resultado: await explicarOfertaNoVigente(solicitudId, deps), solicitudId };
+    return { ...(await explicarOfertaNoVigente(solicitudId, deps)), solicitudId };
   }
 
   // 2) Transacción. Orden de bloqueo: solicitud -> ofertas -> búsqueda.
@@ -75,7 +84,7 @@ async function procesarAceptacion({ ofertaId, conductorId }, deps) {
       ejecutarEnTransaccion(async (tx) => {
         // 2.a) La carrera se decide acá: escritura condicional sobre la solicitud (A).
         const asignacion = await solicitudes.asignar({ solicitudId, conductorId }, tx);
-        if (asignacion.resultado !== R.ASIGNADA) {
+        if (asignacion.resultado !== RA.ASIGNADA) {
           throw new RevertirTransaccion(asignacion.resultado);
         }
 
@@ -117,7 +126,7 @@ async function procesarAceptacion({ ofertaId, conductorId }, deps) {
       // Perdimos la carrera o venció la oferta. Antes de informar "perdiste", revisamos
       // si en realidad es el MISMO conductor repitiendo un pedido que ya había ganado.
       return resolverRepeticion(
-        { ofertaId, conductorId, solicitudId, resultadoOriginal: error.resultado },
+        { ofertaId, conductorId, solicitudId, resultadoOriginal: traducirResultadoPuerto(error.resultado) },
         deps
       );
     }
@@ -142,18 +151,18 @@ async function procesarAceptacion({ ofertaId, conductorId }, deps) {
   await intentar("conductorAsignado", () =>
     deps.notificaciones.conductorAsignado({ solicitudId, conductorId, ofertaId })
   );
-  if (canceladas.length > 0) {
-    await intentar("liberarConductores", () =>
-      deps.notificaciones.liberarConductores(
-        canceladas.map((c) => ({
-          solicitudId,
-          conductorId: c.conductorId,
-          ofertaId: c.ofertaId,
-          motivo: "OFERTA_PERDIDA",
-        }))
-      )
-    );
-  }
+  // M4: el ganador pasa de "reservado" a "ocupado" (una sola vez; no se lo libera).
+  await intentar("conductorSeleccionado", () =>
+    deps.notificaciones.conductorSeleccionado({ solicitudId, conductorId, ofertaId })
+  );
+  // M4 reserva a toda la lista: se libera a todos los que sigan reservados (con o sin oferta,
+  // menos al ganador y a los que ya salieron por rechazo o vencimiento).
+  await intentar("liberarConductores", () =>
+    liberarCandidatosPendientes(
+      { solicitudId, ganadorId: conductorId, motivo: MotivoLiberacion.SOLICITUD_CERRADA, conOferta: canceladas },
+      deps
+    )
+  );
 
   return {
     resultado: R.ASIGNADA,

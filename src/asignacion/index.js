@@ -7,6 +7,7 @@ module.exports = {
   ...require("./autorizacionOferta"),
   ...require("./esquemas"),
   ...require("./notificaciones"),
+  ...require("./liberacion"),
   ...require("./puertos"),
   ...require("./transacciones"),
 };

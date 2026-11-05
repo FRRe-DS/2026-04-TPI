@@ -1,7 +1,9 @@
 // Detección de "búsqueda agotada" y señal hacia A (RF-5.8).
 const { validarDependencias } = require("./puertos");
-const { conReintentoPorDeadlock } = require("./transacciones");
+const { conReintentoPorDeadlock, conTimeout } = require("./transacciones");
 const { EstadoBusqueda, TipoEvento } = require("../comun/estados");
+const { MotivoLiberacion } = require("./notificaciones");
+const { liberarCandidatosPendientes } = require("./liberacion");
 
 // Regla pura (se prueba sin base de datos): la búsqueda está agotada cuando NO queda
 // ninguna oferta pendiente Y (no quedan candidatos sin ofertar O ya pasó la fecha límite).
@@ -18,7 +20,7 @@ async function procesarBusquedaAgotada({ solicitudId, motivo }, deps) {
   const reloj = deps.reloj ?? (() => new Date());
   const ahora = reloj();
 
-  return conReintentoPorDeadlock(() =>
+  const resultado = await conReintentoPorDeadlock(() =>
     deps.ejecutarEnTransaccion(async (tx) => {
       const r = await deps.solicitudes.marcarSinDisponibilidad({ solicitudId, motivo }, tx);
       if (!r.aplicado) {
@@ -38,6 +40,23 @@ async function procesarBusquedaAgotada({ solicitudId, motivo }, deps) {
       return { senalEnviada: true, estadoSolicitud: r.estadoActual, motivo };
     })
   );
+
+  // Ya confirmado: M4 reserva a toda la lista, así que se libera a los que sigan reservados.
+  // Un fallo acá no deshace nada; se informa en `avisosFallidos`.
+  if (resultado.senalEnviada) {
+    try {
+      await conTimeout(
+        Promise.resolve().then(() =>
+          liberarCandidatosPendientes({ solicitudId, motivo: MotivoLiberacion.SOLICITUD_CERRADA }, deps)
+        ),
+        deps.timeoutAvisosMs ?? 3000
+      );
+    } catch (error) {
+      deps.logger?.error({ err: error, solicitudId, aviso: "liberarConductores" }, "falló la liberación al agotarse la búsqueda");
+      return { ...resultado, avisosFallidos: ["liberarConductores"] };
+    }
+  }
+  return resultado;
 }
 
 // Lo llama quien cierra una ronda de ofertas (rechazo, vencimiento, sin candidatos).

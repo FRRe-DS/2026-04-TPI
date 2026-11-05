@@ -33,8 +33,8 @@ function crearEntorno({ rateLimitMax = 1000, chequeos } = {}) {
 
   const mundo = escenarioConOfertas(0);
   // Dos ofertas, de dos conductores distintos, sobre la misma solicitud (ids en formato UUID).
-  mundo.estado.ofertas.set(OFERTA_1, { ofertaId: OFERTA_1, solicitudId: "sol-1", conductorId: "cond-1", estado: "PENDIENTE", venceEn: new Date("2026-10-20T12:05:00Z") });
-  mundo.estado.ofertas.set(OFERTA_2, { ofertaId: OFERTA_2, solicitudId: "sol-1", conductorId: "cond-2", estado: "PENDIENTE", venceEn: new Date("2026-10-20T12:05:00Z") });
+  mundo.estado.ofertas.set(OFERTA_1, { ofertaId: OFERTA_1, solicitudId: "sol-1", conductorId: "cond-1", estado: "pendiente", venceEn: new Date("2026-10-20T12:05:00Z") });
+  mundo.estado.ofertas.set(OFERTA_2, { ofertaId: OFERTA_2, solicitudId: "sol-1", conductorId: "cond-2", estado: "pendiente", venceEn: new Date("2026-10-20T12:05:00Z") });
 
   const app = crearApp({
     config,
@@ -126,7 +126,7 @@ describe("Autenticación y autorización", () => {
     const t = token({ conductor_id: "cond-2" }); // la oferta 1 es de cond-1
     const r = await post(`/ofertas/${OFERTA_1}/respuesta`, { cuerpo: cuerpoOk, jwtToken: t });
     assert.equal(r.status, 403);
-    assert.equal(entorno.mundo.estado.solicitudes.get("sol-1").estado, "BUSCANDO");
+    assert.equal(entorno.mundo.estado.solicitudes.get("sol-1").estado, "buscando");
   });
 
   test("oferta inexistente -> 404", async () => {
@@ -181,17 +181,19 @@ describe("Asignación única de punta a punta por HTTP", () => {
   before(() => levantar());
   after(bajar);
 
-  test("gana el primero (200), el segundo recibe 409 YA_ASIGNADA y el primero puede repetir (200)", async () => {
+  test("gana el primero (200), el segundo recibe 409 SOLICITUD_NO_DISPONIBLE (YA_ASIGNADA) y el primero puede repetir (200)", async () => {
     const ruta1 = `/ofertas/${OFERTA_1}/respuesta`;
     const ruta2 = `/ofertas/${OFERTA_2}/respuesta`;
 
     const primero = await post(ruta1, { cuerpo: { acepta: true }, jwtToken: token() });
     assert.equal(primero.status, 200);
-    assert.equal((await primero.json()).resultado, "ASIGNADA");
+    assert.equal((await primero.json()).resultado, "asignada");
 
     const segundo = await post(ruta2, { cuerpo: { acepta: true }, jwtToken: token({ conductor_id: "cond-2" }) });
     assert.equal(segundo.status, 409);
-    assert.equal((await segundo.json()).error.codigo, "YA_ASIGNADA");
+    const errorSegundo = (await segundo.json()).error;
+    assert.equal(errorSegundo.codigo, "solicitud_no_disponible");
+    assert.equal(errorSegundo.motivo, "ya_asignada");
 
     const repetido = await post(ruta1, { cuerpo: { acepta: true }, jwtToken: token() });
     assert.equal(repetido.status, 200);
