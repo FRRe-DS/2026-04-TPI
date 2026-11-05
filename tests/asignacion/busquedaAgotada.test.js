@@ -26,7 +26,7 @@ describe("Regla de búsqueda agotada (función pura)", () => {
 });
 
 describe("Señal de búsqueda agotada hacia A (RF-5.8)", () => {
-  test("no hay ofertas pendientes ni candidatos: marca SIN_DISPONIBILIDAD, cierra y deja evento", async () => {
+  test("no hay ofertas pendientes ni candidatos: marca sin_disponibilidad, cierra y deja evento", async () => {
     const m = escenarioConOfertas(0, { candidatosRestantes: 0 });
     const r = await evaluarBusquedaAgotada({ solicitudId: "sol-1" }, m.deps);
     assert.equal(r.agotada, true);

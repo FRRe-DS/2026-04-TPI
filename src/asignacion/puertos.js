@@ -10,9 +10,10 @@
 //     -> { estado, conductorAsignadoId } | null
 // solicitudes.asignar({ solicitudId, conductorId }, tx)
 //     Escritura CONDICIONAL: pasa a ASIGNADA solo si estado = BUSCANDO.
-//     -> { resultado: ASIGNADA | YA_ASIGNADA | SOLICITUD_CANCELADA |
-//                     SOLICITUD_NO_BUSCANDO | SOLICITUD_INEXISTENTE }
-//     Si ya estaba asignada AL MISMO conductor puede devolver ASIGNADA (idempotente).
+//     -> { resultado: asignada | ya_asignada | solicitud_cancelada |
+//                     solicitud_no_buscando | solicitud_inexistente }  (ResultadoPuertoAsignacion;
+//        el módulo B lo simplifica a solicitud_no_disponible + motivo / no_encontrado)
+//     Si ya estaba asignada AL MISMO conductor puede devolver asignada (idempotente).
 // solicitudes.marcarSinDisponibilidad({ solicitudId, motivo }, tx)
 //     Condicional: solo si estado = BUSCANDO.
 //     -> { aplicado: boolean, estadoActual }
@@ -27,17 +28,33 @@
 // ofertas.cancelarPendientesDeSolicitud({ solicitudId, exceptoOfertaId? }, tx)
 //     -> [{ ofertaId, conductorId }]   (las que efectivamente canceló)
 // ofertas.contarPendientes(solicitudId, tx?) -> number
+// ofertas.rechazar({ ofertaId, conductorId, ahora }, tx)            (solo lo usa src/respuesta)
+//     Igual que aceptar pero deja RECHAZADA. -> { rechazada: boolean }
+// ofertas.listarVencidas({ ahora, lote }, tx?)                       (solo lo usa el job de vencimientos)
+//     -> [{ ofertaId, solicitudId, conductorId }]  pendientes con venceEn <= ahora
+// ofertas.vencer({ ofertaId, ahora }, tx)
+//     Condicional: solo si PENDIENTE y venceEn <= ahora. -> { vencida: boolean }
 // busquedas.obtenerActiva(solicitudId, tx?)
 //     -> { busquedaId, venceEn, candidatosRestantes } | null
 // busquedas.cerrar({ solicitudId, estado }, tx)
 //     Condicional: solo si estaba ACTIVA. -> boolean (true si la cerró)
+//
+// candidatos (lista que devolvió M4 para la solicitud; M4 reserva a toda la lista)
+// candidatos.guardar({ solicitudId, ronda, lista: [{ conductorId, distanciaM, tipoVehiculo }], ahora }, tx?)
+//     Idempotente: repetir la misma (solicitudId, ronda, conductorId) no duplica.        (src/busqueda)
+// candidatos.pendientesDeLiberar({ solicitudId, exceptoConductorId? }, tx?)
+//     -> [conductorId]  de TODAS las rondas, los que todavía no se liberaron en M4.
+// candidatos.marcarLiberados({ solicitudId, conductorIds, ahora }, tx?)
+//     Condicional: solo los que seguían sin liberar. -> { marcados: number }
 //
 // ── Infraestructura ──────────────────────────────────────────────────────────
 // ejecutarEnTransaccion(async (tx) => resultado)
 //     Confirma si la función termina; deshace y relanza el error si lanza.
 // cacheOfertas.eliminar([ofertaId, ...])                       (Redis, RNF-11)
 // notificaciones.conductorAsignado({ solicitudId, conductorId, ofertaId })   (M6)
+// notificaciones.conductorSeleccionado({ solicitudId, conductorId, ofertaId })   (M4: el ganador pasa a "ocupado")
 // notificaciones.liberarConductores([{ solicitudId, conductorId, ofertaId, motivo }])  (M4)
+//     motivo: uno de MotivoLiberacion (oferta_rechazada | oferta_vencida | solicitud_cerrada | cancelada_por_cliente)
 // reloj() -> Date           (opcional; para poder probar vencimientos)
 // logger                    (opcional)
 //
@@ -49,7 +66,8 @@ const REQUERIDOS = {
   busquedas: ["obtenerActiva", "cerrar"],
   eventos: ["registrar"],
   cacheOfertas: ["eliminar"],
-  notificaciones: ["conductorAsignado", "liberarConductores"],
+  candidatos: ["pendientesDeLiberar", "marcarLiberados"],
+  notificaciones: ["conductorAsignado", "conductorSeleccionado", "liberarConductores"],
 };
 
 function validarDependencias(deps) {

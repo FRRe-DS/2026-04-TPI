@@ -6,6 +6,8 @@
 // A llama a esta función DESPUÉS de confirmar su cancelación. Como el estado de la
 // solicitud ya es CANCELADA, ningún conductor puede ganar mientras estas ofertas se cierran.
 const { validarDependencias } = require("./puertos");
+const { MotivoLiberacion } = require("./notificaciones");
+const { liberarCandidatosPendientes } = require("./liberacion");
 const { conReintentoPorDeadlock, conTimeout } = require("./transacciones");
 const { EstadoBusqueda, TipoEvento } = require("../comun/estados");
 
@@ -47,17 +49,14 @@ async function procesarCancelacionSolicitud({ solicitudId, motivo = "CANCELADA_P
 
   if (canceladas.length > 0) {
     await intentar("cacheOfertas", () => deps.cacheOfertas.eliminar(canceladas.map((c) => c.ofertaId)));
-    await intentar("liberarConductores", () =>
-      deps.notificaciones.liberarConductores(
-        canceladas.map((c) => ({
-          solicitudId,
-          conductorId: c.conductorId,
-          ofertaId: c.ofertaId,
-          motivo,
-        }))
-      )
-    );
   }
+  // M4 reserva a toda la lista: se libera a todos los que sigan reservados, haya o no ofertas pendientes.
+  await intentar("liberarConductores", () =>
+    liberarCandidatosPendientes(
+      { solicitudId, motivo: MotivoLiberacion.CANCELADA_POR_CLIENTE, conOferta: canceladas },
+      deps
+    )
+  );
   return { solicitudId, ofertasCanceladas: canceladas.map((c) => c.ofertaId), avisosFallidos };
 }
 
