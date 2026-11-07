@@ -206,6 +206,31 @@ paths: {
                           type: string
                         type:
                           type: string
+
+  /solicitudes/{solicitud_id}/historial:
+    parameters:
+    - $ref: '#/components/parameters/SolicitudId'
+    get:
+      tags:
+      - Auditoría
+      operationId: obtenerHistorialSolicitud
+      summary: Consultar eventos de auditoría de la solicitud
+      description: RF-5.9.
+      responses:
+        '200':
+          description: Eventos registrados
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EventoAuditoria'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 }
 
 components:
