@@ -30,11 +30,20 @@ async function levantar() {
   await new Promise((r) => { servidor = app.listen(0, "127.0.0.1", r); });
   base = `http://127.0.0.1:${servidor.address().port}`;
 }
-const responder = (ofertaId, acepta, jwtToken) =>
+const DUENOS = { [O1]: "cond-1", [O2]: "cond-2", [O3]: "cond-3" };
+// Cuerpo del contrato con M3: { solicitud_id, oferta_id, conductor_id, respuesta }.
+const cuerpoOferta = (ofertaId, acepta, extra = {}) => ({
+  solicitud_id: "sol-1",
+  oferta_id: ofertaId,
+  conductor_id: DUENOS[ofertaId] ?? "cond-1",
+  respuesta: acepta ? "aceptado" : "rechazado",
+  ...extra,
+});
+const responder = (ofertaId, acepta, jwtToken, extra) =>
   fetch(`${base}/ofertas/${ofertaId}/respuesta`, {
     method: "POST",
     headers: { "content-type": "application/json", ...(jwtToken ? { authorization: `Bearer ${jwtToken}` } : {}) },
-    body: JSON.stringify({ acepta }),
+    body: JSON.stringify(cuerpoOferta(ofertaId, acepta, extra)),
   });
 
 describe("POST /ofertas/:id/respuesta: rechazo y aceptación de punta a punta", () => {
@@ -53,9 +62,16 @@ describe("POST /ofertas/:id/respuesta: rechazo y aceptación de punta a punta", 
     const r = await fetch(`${base}/ofertas/${O1}/respuesta`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${token("cond-1")}` },
-      body: JSON.stringify({ acepta: "si", conductorId: "cond-2" }),
+      body: JSON.stringify({ respuesta: "si", conductorId: "cond-2" }),
     });
     assert.equal(r.status, 400);
+  });
+
+  test("ids del cuerpo que no coinciden con la oferta: 400 (solicitud_id, oferta_id) o 403 (conductor_id)", async () => {
+    assert.equal((await responder(O1, false, token("cond-1"), { solicitud_id: "sol-9" })).status, 400);
+    assert.equal((await responder(O1, false, token("cond-1"), { oferta_id: O2 })).status, 400);
+    assert.equal((await responder(O1, false, token("cond-1"), { conductor_id: "cond-2" })).status, 403);
+    assert.equal(mundo.estado.ofertas.get(O1).estado, "pendiente", "nada cambió");
   });
 
   test("rechazar: 200, repetir: 200 con repetida:true, y no se expone el estado de la búsqueda", async () => {

@@ -9,7 +9,6 @@
 //   3. Después del commit: avisos (caché, M4) y evaluación de búsqueda agotada.
 //      Si algo de esto falla, el rechazo YA está guardado: se informa en `avisosFallidos`.
 const { EstadoOferta, TipoEvento } = require("../comun/estados");
-const { MotivoLiberacion } = require("../asignacion/notificaciones");
 const { liberarYMarcar } = require("../asignacion/liberacion");
 const {
   RevertirTransaccion,
@@ -85,7 +84,7 @@ async function procesarRechazo({ ofertaId, conductorId }, deps) {
     liberarYMarcar(
       {
         solicitudId,
-        items: [{ solicitudId, conductorId, ofertaId, motivo: MotivoLiberacion.OFERTA_RECHAZADA }],
+        items: [{ solicitudId, conductorId }],
       },
       deps
     )

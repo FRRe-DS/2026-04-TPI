@@ -8,7 +8,6 @@
 // una gana cada oferta y solo esa registra el evento y avisa. Una falla en una oferta no
 // frena a las demás ni al siguiente ciclo.
 const { TipoEvento } = require("../comun/estados");
-const { MotivoLiberacion } = require("../asignacion/notificaciones");
 const { liberarYMarcar } = require("../asignacion/liberacion");
 const {
   RevertirTransaccion,
@@ -77,14 +76,7 @@ function iniciarJobVencimientos({ deps, intervaloMs = 5000, lote = 100, logger }
               liberarYMarcar(
                 {
                   solicitudId: oferta.solicitudId,
-                  items: [
-                    {
-                      solicitudId: oferta.solicitudId,
-                      conductorId: oferta.conductorId,
-                      ofertaId: oferta.ofertaId,
-                      motivo: MotivoLiberacion.OFERTA_VENCIDA,
-                    },
-                  ],
+                  items: [{ solicitudId: oferta.solicitudId, conductorId: oferta.conductorId }],
                 },
                 deps
               )

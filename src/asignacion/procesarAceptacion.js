@@ -13,7 +13,6 @@ const {
   traducirResultadoPuerto,
 } = require("./resultados");
 const { validarDependencias } = require("./puertos");
-const { MotivoLiberacion } = require("./notificaciones");
 const { liberarCandidatosPendientes } = require("./liberacion");
 const { RevertirTransaccion, conReintentoPorDeadlock, conTimeout } = require("./transacciones");
 const {
@@ -151,15 +150,11 @@ async function procesarAceptacion({ ofertaId, conductorId }, deps) {
   await intentar("conductorAsignado", () =>
     deps.notificaciones.conductorAsignado({ solicitudId, conductorId, ofertaId })
   );
-  // M4: el ganador pasa de "reservado" a "ocupado" (una sola vez; no se lo libera).
-  await intentar("conductorSeleccionado", () =>
-    deps.notificaciones.conductorSeleccionado({ solicitudId, conductorId, ofertaId })
-  );
   // M4 reserva a toda la lista: se libera a todos los que sigan reservados (con o sin oferta,
   // menos al ganador y a los que ya salieron por rechazo o vencimiento).
   await intentar("liberarConductores", () =>
     liberarCandidatosPendientes(
-      { solicitudId, ganadorId: conductorId, motivo: MotivoLiberacion.SOLICITUD_CERRADA, conOferta: canceladas },
+      { solicitudId, ganadorId: conductorId, conOferta: canceladas },
       deps
     )
   );

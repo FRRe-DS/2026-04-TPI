@@ -12,6 +12,16 @@ const OFERTA_1 = "11111111-1111-4111-8111-111111111111";
 const OFERTA_2 = "22222222-2222-4222-8222-222222222222";
 const OFERTA_JAMAS = "99999999-9999-4999-8999-999999999999";
 
+// Cuerpo del contrato con M3: { solicitud_id, oferta_id, conductor_id, respuesta }.
+const DUENOS = { [OFERTA_1]: "cond-1", [OFERTA_2]: "cond-2" };
+const cuerpoOferta = (ofertaId, respuesta = "aceptado", extra = {}) => ({
+  solicitud_id: "sol-1",
+  oferta_id: ofertaId,
+  conductor_id: DUENOS[ofertaId] ?? "cond-1",
+  respuesta,
+  ...extra,
+});
+
 function token(claims = {}, { secreto = SECRETO, opciones = {} } = {}) {
   return jwt.sign(
     { sub: "identidad-1", roles: ["CONDUCTOR"], conductor_id: "cond-1", ...claims },
@@ -80,7 +90,7 @@ describe("Autenticación y autorización", () => {
   before(() => levantar());
   after(bajar);
 
-  const cuerpoOk = { acepta: true };
+  const cuerpoOk = cuerpoOferta(OFERTA_1);
 
   test("sin token -> 401 con WWW-Authenticate", async () => {
     const r = await post(`/ofertas/${OFERTA_1}/respuesta`, { cuerpo: cuerpoOk });
@@ -130,7 +140,7 @@ describe("Autenticación y autorización", () => {
   });
 
   test("oferta inexistente -> 404", async () => {
-    const r = await post(`/ofertas/${OFERTA_JAMAS}/respuesta`, { cuerpo: cuerpoOk, jwtToken: token() });
+    const r = await post(`/ofertas/${OFERTA_JAMAS}/respuesta`, { cuerpo: cuerpoOferta(OFERTA_JAMAS), jwtToken: token() });
     assert.equal(r.status, 404);
   });
 });
@@ -140,23 +150,40 @@ describe("Validación de entrada", () => {
   after(bajar);
 
   test("ofertaId que no es UUID -> 400 con detalle del campo", async () => {
-    const r = await post(`/ofertas/no-es-uuid/respuesta`, { cuerpo: { acepta: true }, jwtToken: token() });
+    const r = await post(`/ofertas/no-es-uuid/respuesta`, { cuerpo: cuerpoOferta("no-es-uuid"), jwtToken: token() });
     assert.equal(r.status, 400);
     const cuerpo = await r.json();
     assert.equal(cuerpo.error.codigo, "VALIDACION");
     assert.ok(cuerpo.error.detalles.some((d) => d.campo === "params.ofertaId"));
   });
 
-  test("acepta con tipo incorrecto o ausente -> 400", async () => {
-    for (const cuerpo of [{ acepta: "si" }, {}]) {
+  test("respuesta con valor incorrecto o ausente, o faltan ids -> 400", async () => {
+    const { respuesta, ...sinRespuesta } = cuerpoOferta(OFERTA_1);
+    const { conductor_id, ...sinConductor } = cuerpoOferta(OFERTA_1);
+    for (const cuerpo of [cuerpoOferta(OFERTA_1, "tal vez"), cuerpoOferta(OFERTA_1, true), sinRespuesta, sinConductor, {}]) {
       const r = await post(`/ofertas/${OFERTA_1}/respuesta`, { cuerpo, jwtToken: token() });
       assert.equal(r.status, 400);
     }
   });
 
   test("campos de más (mass assignment) -> 400", async () => {
-    const r = await post(`/ofertas/${OFERTA_1}/respuesta`, { cuerpo: { acepta: true, conductorId: "cond-2" }, jwtToken: token() });
+    const r = await post(`/ofertas/${OFERTA_1}/respuesta`, { cuerpo: cuerpoOferta(OFERTA_1, "aceptado", { esAdmin: true }), jwtToken: token() });
     assert.equal(r.status, 400);
+  });
+
+  test("ids del cuerpo que no coinciden con la oferta: otro oferta_id o solicitud_id -> 400, otro conductor_id -> 403", async () => {
+    const ruta = `/ofertas/${OFERTA_1}/respuesta`;
+    const otroOferta = await post(ruta, { cuerpo: cuerpoOferta(OFERTA_2), jwtToken: token() });
+    assert.equal(otroOferta.status, 403, "el conductor_id del cuerpo (cond-2) no es el dueño de la oferta 1");
+    const otraOferta = await post(ruta, { cuerpo: cuerpoOferta(OFERTA_1, "aceptado", { oferta_id: OFERTA_2 }), jwtToken: token() });
+    assert.equal(otraOferta.status, 400);
+    assert.ok((await otraOferta.json()).error.detalles.some((d) => d.campo === "body.oferta_id"));
+    const otraSolicitud = await post(ruta, { cuerpo: cuerpoOferta(OFERTA_1, "aceptado", { solicitud_id: "sol-ajena" }), jwtToken: token() });
+    assert.equal(otraSolicitud.status, 400);
+    assert.ok((await otraSolicitud.json()).error.detalles.some((d) => d.campo === "body.solicitud_id"));
+    const otroConductor = await post(ruta, { cuerpo: cuerpoOferta(OFERTA_1, "aceptado", { conductor_id: "cond-2" }), jwtToken: token() });
+    assert.equal(otroConductor.status, 403);
+    assert.equal(entorno.mundo.estado.solicitudes.get("sol-1").estado, "buscando", "nada cambió");
   });
 
   test("JSON roto -> 400 JSON_INVALIDO", async () => {
@@ -166,7 +193,7 @@ describe("Validación de entrada", () => {
   });
 
   test("cuerpo demasiado grande -> 413", async () => {
-    const r = await post(`/ofertas/${OFERTA_1}/respuesta`, { cuerpo: { acepta: true, relleno: "x".repeat(5000) }, jwtToken: token() });
+    const r = await post(`/ofertas/${OFERTA_1}/respuesta`, { cuerpo: cuerpoOferta(OFERTA_1, "aceptado", { relleno: "x".repeat(5000) }), jwtToken: token() });
     assert.equal(r.status, 413);
   });
 
@@ -185,17 +212,17 @@ describe("Asignación única de punta a punta por HTTP", () => {
     const ruta1 = `/ofertas/${OFERTA_1}/respuesta`;
     const ruta2 = `/ofertas/${OFERTA_2}/respuesta`;
 
-    const primero = await post(ruta1, { cuerpo: { acepta: true }, jwtToken: token() });
+    const primero = await post(ruta1, { cuerpo: cuerpoOferta(OFERTA_1), jwtToken: token() });
     assert.equal(primero.status, 200);
     assert.equal((await primero.json()).resultado, "asignada");
 
-    const segundo = await post(ruta2, { cuerpo: { acepta: true }, jwtToken: token({ conductor_id: "cond-2" }) });
+    const segundo = await post(ruta2, { cuerpo: cuerpoOferta(OFERTA_2), jwtToken: token({ conductor_id: "cond-2" }) });
     assert.equal(segundo.status, 409);
     const errorSegundo = (await segundo.json()).error;
     assert.equal(errorSegundo.codigo, "solicitud_no_disponible");
     assert.equal(errorSegundo.motivo, "ya_asignada");
 
-    const repetido = await post(ruta1, { cuerpo: { acepta: true }, jwtToken: token() });
+    const repetido = await post(ruta1, { cuerpo: cuerpoOferta(OFERTA_1), jwtToken: token() });
     assert.equal(repetido.status, 200);
     assert.equal((await repetido.json()).repetida, true);
     assert.equal(entorno.mundo.espias.conductorAsignado.length, 1);
@@ -206,8 +233,8 @@ describe("Asignación única de punta a punta por HTTP", () => {
     await bajar();
     await levantar();
     const [a, b] = await Promise.all([
-      post(`/ofertas/${OFERTA_1}/respuesta`, { cuerpo: { acepta: true }, jwtToken: token() }),
-      post(`/ofertas/${OFERTA_2}/respuesta`, { cuerpo: { acepta: true }, jwtToken: token({ conductor_id: "cond-2" }) }),
+      post(`/ofertas/${OFERTA_1}/respuesta`, { cuerpo: cuerpoOferta(OFERTA_1), jwtToken: token() }),
+      post(`/ofertas/${OFERTA_2}/respuesta`, { cuerpo: cuerpoOferta(OFERTA_2), jwtToken: token({ conductor_id: "cond-2" }) }),
     ]);
     assert.deepEqual([a.status, b.status].sort(), [200, 409]);
   });
@@ -227,7 +254,7 @@ describe("Endurecimiento y observabilidad", () => {
 
   test("los logs llevan solicitudId y reqId, y NUNCA el token", async () => {
     const t = token();
-    await post(`/ofertas/${OFERTA_1}/respuesta`, { cuerpo: { acepta: true }, jwtToken: t });
+    await post(`/ofertas/${OFERTA_1}/respuesta`, { cuerpo: cuerpoOferta(OFERTA_1), jwtToken: t });
     await new Promise((r) => setTimeout(r, 20));
     const todo = entorno.lineas.join("");
     assert.ok(todo.includes('"solicitudId":"sol-1"'), "debe loguear el solicitudId");
@@ -246,7 +273,7 @@ describe("Endurecimiento y observabilidad", () => {
   test("límite de pedidos -> 429 al pasarse (y /health no cuenta para el límite)", async () => {
     for (let i = 0; i < 12; i++) assert.equal((await fetch(`${base}/health`)).status, 200);
     const estados = [];
-    for (let i = 0; i < 12; i++) estados.push((await post(`/ofertas/${OFERTA_1}/respuesta`, { cuerpo: { acepta: false }, jwtToken: token() })).status);
+    for (let i = 0; i < 12; i++) estados.push((await post(`/ofertas/${OFERTA_1}/respuesta`, { cuerpo: cuerpoOferta(OFERTA_1, "rechazado"), jwtToken: token() })).status);
     assert.ok(estados.includes(429), `debería haber algún 429: ${estados.join(",")}`);
   });
 });

@@ -8,11 +8,13 @@ versiones en memoria. Los datos se pierden al cortar el proceso.
 Al arrancar imprime las ofertas y los tokens (COND1..3, CLIENTE, ADMIN). Son SOLO de prueba:
 en producción los emite M1. Cargarlos en variables:   T1=<token COND1>   TA=<token ADMIN>
 
-Cuerpo del POST: {"acepta": true}  o  {"acepta": false}  (usa el endpoint real de src/respuesta: acepta y rechaza)
+Cuerpo del POST (contrato con M3): {"solicitud_id":"sol-1","oferta_id":"<id de la oferta>","conductor_id":"cond-1","respuesta":"aceptado"}
+  o "respuesta":"rechazado"  (usa el endpoint real de src/respuesta: acepta y rechaza)
 
   curl -s localhost:3000/health
   curl -s -X POST localhost:3000/ofertas/11111111-1111-4111-8111-111111111111/respuesta \
-       -H "authorization: Bearer $T1" -H "content-type: application/json" -d '{"acepta":true}'
+       -H "authorization: Bearer $T1" -H "content-type: application/json" \
+       -d '{"solicitud_id":"sol-1","oferta_id":"11111111-1111-4111-8111-111111111111","conductor_id":"cond-1","respuesta":"aceptado"}'
   curl -s localhost:3000/debug/estado -H "authorization: Bearer $TA"
   curl -s -X POST localhost:3000/debug/cancelar  -H "authorization: Bearer $TA"
   curl -s -X POST localhost:3000/debug/vencer-ofertas -H "authorization: Bearer $TA"

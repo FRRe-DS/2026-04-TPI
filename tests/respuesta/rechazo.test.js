@@ -15,7 +15,7 @@ describe("procesarRechazo (RF-5.5)", () => {
     assert.equal(m.estado.ofertas.get("of-2").estado, "pendiente");
     assert.equal(m.estado.solicitudes.get("sol-1").estado, "buscando");
     assert.equal(m.estado.eventos.filter((e) => e.tipo === "RECHAZO").length, 1);
-    assert.deepEqual(m.espias.liberados.map((l) => l.motivo), ["oferta_rechazada"]);
+    assert.deepEqual(m.espias.liberados.map((l) => l.conductorId), ["cond-1"]);
     assert.deepEqual(m.espias.cacheEliminado, ["of-1"]);
   });
 

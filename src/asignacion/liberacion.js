@@ -8,11 +8,10 @@
 //
 // Para saber quién ya salió se usa el puerto `candidatos` (liberadoEn). Se marca DESPUÉS de que M4
 // confirma, así un fallo de M4 deja al conductor pendiente en vez de darlo por liberado.
-const { MotivoLiberacion } = require("./notificaciones");
 
 // Libera `items` en M4 y marca como liberados a los que M4 confirmó. Si M4 falló con alguno,
 // marca igual a los que sí salieron y vuelve a lanzar el error (queda como aviso fallido).
-// items: [{ solicitudId, conductorId, ofertaId|null, motivo }]
+// items: [{ solicitudId, conductorId }]. M4 recibe el mismo aviso "liberado" siempre, sin motivo.
 async function liberarYMarcar({ solicitudId, items }, deps) {
   if (items.length === 0) return;
   const ahora = (deps.reloj ?? (() => new Date()))();
@@ -32,21 +31,15 @@ async function liberarYMarcar({ solicitudId, items }, deps) {
 
 // Al cerrar la solicitud: libera a todos los candidatos que sigan reservados, menos al ganador.
 // `conOferta` son las ofertas que se acaban de cancelar ([{ conductorId, ofertaId }]); se incluyen
-// aunque la lista no se hubiera guardado, y le dan su oferta_id al aviso.
-async function liberarCandidatosPendientes({ solicitudId, ganadorId, motivo, conOferta = [] }, deps) {
+// aunque la lista no se hubiera guardado.
+async function liberarCandidatosPendientes({ solicitudId, ganadorId, conOferta = [] }, deps) {
   const pendientes = await deps.candidatos.pendientesDeLiberar({
     solicitudId,
     ...(ganadorId ? { exceptoConductorId: ganadorId } : {}),
   });
-  const ofertaPorConductor = new Map(conOferta.map((c) => [c.conductorId, c.ofertaId]));
-  const conductores = new Set([...pendientes, ...ofertaPorConductor.keys()]);
+  const conductores = new Set([...pendientes, ...conOferta.map((c) => c.conductorId)]);
   if (ganadorId) conductores.delete(ganadorId);
-  const items = [...conductores].map((conductorId) => ({
-    solicitudId,
-    conductorId,
-    ofertaId: ofertaPorConductor.get(conductorId) ?? null,
-    motivo,
-  }));
+  const items = [...conductores].map((conductorId) => ({ solicitudId, conductorId }));
   await liberarYMarcar({ solicitudId, items }, deps);
   return items.map((i) => i.conductorId);
 }

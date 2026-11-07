@@ -38,7 +38,7 @@ function sembrar() {
   mundo.estado.busquedas.clear();
   mundo.estado.candidatos.clear();
   mundo.estado.eventos.length = 0;
-  for (const k of ["cacheEliminado", "conductorAsignado", "seleccionados", "liberados"]) mundo.espias[k].length = 0;
+  for (const k of ["cacheEliminado", "conductorAsignado", "liberados"]) mundo.espias[k].length = 0;
   mundo.estado.solicitudes.set("sol-1", { solicitudId: "sol-1", estado: "buscando", conductorAsignadoId: null });
   mundo.estado.busquedas.set("sol-1", {
     busquedaId: "bus-1", solicitudId: "sol-1", estado: "activa", venceEn, candidatosRestantes: Number(process.env.CANDIDATOS ?? 3),
@@ -80,7 +80,6 @@ function registrarRutas(app, { requerirRol, validar }) {
       eventos: mundo.estado.eventos,
       avisos: {
         conductorAsignado: mundo.espias.conductorAsignado,
-        seleccionados: mundo.espias.seleccionados,
         liberados: mundo.espias.liberados,
         cacheEliminado: mundo.espias.cacheEliminado,
       },

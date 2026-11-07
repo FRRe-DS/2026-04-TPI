@@ -17,17 +17,13 @@ describe("M4 reserva a toda la lista: se libera a todos los que sigan reservados
 
     const libres = porConductor(m);
     assert.deepEqual(Object.keys(libres).sort(), ["cond-2", "cond-extra-1", "cond-extra-2"]);
-    assert.ok(Object.values(libres).every((l) => l.motivo === "solicitud_cerrada"));
-    assert.equal(libres["cond-2"].ofertaId, "of-2", "el que tenía oferta lleva su oferta_id");
-    assert.equal(libres["cond-extra-1"].ofertaId, null, "el que nunca la recibió va sin oferta_id");
-    assert.deepEqual(reservados(m), ["cond-1"], "solo el ganador sigue reservado (ahora como seleccionado)");
-    assert.equal(m.espias.seleccionados.length, 1);
+    assert.deepEqual(reservados(m), ["cond-1"], "solo el ganador sigue sin liberar");
   });
 
   test("el que ya salió por oferta_rechazada NO se libera otra vez al cerrar", async () => {
     const m = escenarioConOfertas(3, { sinOferta: 1 });
     await procesarRechazo({ ofertaId: "of-1", conductorId: "cond-1" }, m.deps);
-    assert.deepEqual(m.espias.liberados.map((l) => [l.conductorId, l.motivo]), [["cond-1", "oferta_rechazada"]]);
+    assert.deepEqual(m.espias.liberados.map((l) => l.conductorId), ["cond-1"]);
 
     await procesarAceptacion({ ofertaId: "of-2", conductorId: "cond-2" }, m.deps);
     const veces = m.espias.liberados.filter((l) => l.conductorId === "cond-1").length;
@@ -41,7 +37,7 @@ describe("M4 reserva a toda la lista: se libera a todos los que sigan reservados
     const job = iniciarJobVencimientos({ deps: m.deps, intervaloMs: 1e9, logger });
     await job.ciclo();
     job.detener();
-    assert.deepEqual(m.espias.liberados.map((l) => [l.conductorId, l.motivo]), [["cond-1", "oferta_vencida"]]);
+    assert.deepEqual(m.espias.liberados.map((l) => l.conductorId), ["cond-1"]);
 
     await procesarAceptacion({ ofertaId: "of-2", conductorId: "cond-2" }, m.deps);
     assert.equal(m.espias.liberados.filter((l) => l.conductorId === "cond-1").length, 1);
@@ -54,7 +50,6 @@ describe("M4 reserva a toda la lista: se libera a todos los que sigan reservados
     const r = await procesarCancelacionSolicitud({ solicitudId: "sol-1" }, m.deps);
     assert.deepEqual(r.avisosFallidos, []);
     assert.equal(m.espias.liberados.length, 4);
-    assert.ok(m.espias.liberados.every((l) => l.motivo === "cancelada_por_cliente"));
     assert.deepEqual(reservados(m), []);
 
     const sinOfertas = escenarioConOfertas(0, { sinOferta: 2 });
@@ -67,10 +62,7 @@ describe("M4 reserva a toda la lista: se libera a todos los que sigan reservados
     const m = escenarioConOfertas(1, { sinOferta: 2, candidatosRestantes: 0 });
     await procesarRechazo({ ofertaId: "of-1", conductorId: "cond-1" }, m.deps); // dispara la evaluación
     assert.equal(m.estado.solicitudes.get("sol-1").estado, "sin_disponibilidad");
-    assert.deepEqual(
-      m.espias.liberados.map((l) => [l.conductorId, l.motivo]),
-      [["cond-1", "oferta_rechazada"], ["cond-extra-1", "solicitud_cerrada"], ["cond-extra-2", "solicitud_cerrada"]]
-    );
+    assert.deepEqual(m.espias.liberados.map((l) => l.conductorId), ["cond-1", "cond-extra-1", "cond-extra-2"]);
     assert.deepEqual(reservados(m), []);
   });
 

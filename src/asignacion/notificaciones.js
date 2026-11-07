@@ -1,38 +1,58 @@
-// Avisos a otros módulos tras una asignación, rechazo, vencimiento o cancelación (M6 y M4).
+// Avisos a otros módulos: ofertas a M3, y tras una asignación, rechazo, vencimiento o cancelación (M6 y M4).
 // Usa clientes con timeout y reintentos limitados (RNF-13) e idempotencia (RNF-09):
 // repetir un aviso no puede duplicar efectos en el otro módulo.
 //
-// Contrato con M4 (docs/contrato-interno-m5.md, sección 7). Hacia M4 el cuerpo va en snake_case;
-// el resto del código trabaja en camelCase y la traducción se hace SOLO acá.
-//   Liberar conductor       { conductor_id, solicitud_id, oferta_id, motivo }
-//                           (oferta_id es null para un candidato que nunca recibió oferta)
-//   Conductor seleccionado  { solicitud_id, conductor_id, oferta_id }
+// Hacia M3 y M4 el cuerpo va en snake_case; el resto del código trabaja en camelCase y la traducción
+// se hace SOLO acá.
+//   Liberar conductor   { conductor_id, solicitud_id }
+//                       Es el mismo aviso para todos: M4 no recibe el motivo de la liberación.
+// La aceptación de un conductor NO se le avisa a M4 (se da solo a M3).
 //
-// ATENCIÓN: las rutas NO están inventadas. Hay que acordarlas con los grupos de M4 y M6;
+// Contrato con M3 (envío de ofertas): una llamada por solicitud con todas las ofertas.
+//   Enviar ofertas      { solicitud_id, ofertas: [{ oferta_id, conductor_id }],
+//                         origen_latitud, origen_longitud, destino_latitud, destino_longitud,
+//                         tipo_vehiculo, vence_en (ISO-8601 UTC) }
+//   Respuesta de M3: 200. La respuesta del conductor llega a M5 por src/respuesta (POST /ofertas/:ofertaId/respuesta).
+//
+// ATENCIÓN: las rutas NO están inventadas. Hay que acordarlas con los grupos de M3, M4 y M6;
 // por eso se pasan por parámetro y no tienen valor por defecto.
 //
+//   rutas.m3EnviarOfertas({ solicitudId })                  -> string
 //   rutas.m6ConductorAsignado({ solicitudId })              -> string
 //   rutas.m4LiberarConductor({ conductorId, solicitudId })  -> string
-//   rutas.m4ConductorSeleccionado({ solicitudId })          -> string
 
-// Motivos que M4 acepta al liberar a un conductor (valores tal cual viajan).
-const MotivoLiberacion = Object.freeze({
-  OFERTA_RECHAZADA: "oferta_rechazada", // el conductor rechazó
-  OFERTA_VENCIDA: "oferta_vencida", // el conductor no respondió a tiempo
-  SOLICITUD_CERRADA: "solicitud_cerrada", // otro conductor ganó la solicitud
-  CANCELADA_POR_CLIENTE: "cancelada_por_cliente", // el cliente canceló
-});
+const { createHash } = require("node:crypto");
 
-const MOTIVOS_VALIDOS = new Set(Object.values(MotivoLiberacion));
-
-function crearNotificaciones({ clienteM4, clienteM6, rutas, logger }) {
-  if (!clienteM4 || !clienteM6) throw new Error("Faltan clienteM4 y/o clienteM6");
-  const requeridas = ["m6ConductorAsignado", "m4LiberarConductor", "m4ConductorSeleccionado"];
+function crearNotificaciones({ clienteM3, clienteM4, clienteM6, rutas, logger }) {
+  if (!clienteM3 || !clienteM4 || !clienteM6) throw new Error("Faltan clienteM3, clienteM4 y/o clienteM6");
+  const requeridas = ["m3EnviarOfertas", "m6ConductorAsignado", "m4LiberarConductor"];
   if (requeridas.some((nombre) => typeof rutas?.[nombre] !== "function")) {
-    throw new Error("Faltan las rutas acordadas con M4 y M6");
+    throw new Error("Faltan las rutas acordadas con M3, M4 y M6");
   }
 
   return {
+    // M3: manda las ofertas a todos los conductores de la ronda, con los datos del viaje.
+    // ofertas: [{ ofertaId, conductorId }] · origen/destino: { latitud, longitud } · venceEn: Date o ISO.
+    // Repetir el envío es seguro: la clave de idempotencia depende de la solicitud y de las ofertas.
+    async enviarOfertas({ solicitudId, ofertas, origen, destino, tipoVehiculo, venceEn }) {
+      if (!Array.isArray(ofertas) || ofertas.length === 0) throw new Error("No hay ofertas para enviar a M3");
+      const huella = createHash("sha1").update(ofertas.map((o) => o.ofertaId).sort().join(",")).digest("hex").slice(0, 16);
+      await clienteM3.post(
+        rutas.m3EnviarOfertas({ solicitudId }),
+        {
+          solicitud_id: solicitudId,
+          ofertas: ofertas.map((o) => ({ oferta_id: o.ofertaId, conductor_id: o.conductorId })),
+          origen_latitud: origen.latitud,
+          origen_longitud: origen.longitud,
+          destino_latitud: destino.latitud,
+          destino_longitud: destino.longitud,
+          tipo_vehiculo: tipoVehiculo,
+          vence_en: new Date(venceEn).toISOString(),
+        },
+        { claveIdempotencia: `ofertas:${solicitudId}:${huella}` }
+      );
+    },
+
     async conductorAsignado({ solicitudId, conductorId, ofertaId }) {
       await clienteM6.post(
         rutas.m6ConductorAsignado({ solicitudId }),
@@ -41,37 +61,15 @@ function crearNotificaciones({ clienteM4, clienteM6, rutas, logger }) {
       );
     },
 
-    // M4: el ganador pasa de "reservado" a "ocupado". Se manda una sola vez, tras confirmar.
-    // M4 puede responder 4xx si el conductor ya no está disponible: llega acá como error y
-    // el caso de uso lo informa en `avisosFallidos` (la asignación ya está confirmada).
-    async conductorSeleccionado({ solicitudId, conductorId, ofertaId }) {
-      await clienteM4.post(
-        rutas.m4ConductorSeleccionado({ solicitudId }),
-        { solicitud_id: solicitudId, conductor_id: conductorId, oferta_id: ofertaId },
-        { claveIdempotencia: `seleccion:${solicitudId}:${conductorId}` }
-      );
-    },
-
+    // lista: [{ solicitudId, conductorId }]. Devuelve los conductores liberados; si M4 falla con
+    // alguno, el error trae en `liberados` los que SÍ salieron.
     async liberarConductores(lista) {
       const resultados = await Promise.allSettled(
         lista.map(async (item) => {
-          if (!MOTIVOS_VALIDOS.has(item.motivo)) {
-            throw new Error(`Motivo de liberación inválido: ${item.motivo}`);
-          }
           await clienteM4.post(
             rutas.m4LiberarConductor({ conductorId: item.conductorId, solicitudId: item.solicitudId }),
-            {
-              conductor_id: item.conductorId,
-              solicitud_id: item.solicitudId,
-              oferta_id: item.ofertaId ?? null,
-              motivo: item.motivo,
-            },
-            {
-              // Con oferta la clave es por oferta; sin oferta (candidato que nunca la recibió), por solicitud y conductor.
-              claveIdempotencia: item.ofertaId
-                ? `liberar:${item.ofertaId}`
-                : `liberar:${item.solicitudId}:${item.conductorId}`,
-            }
+            { conductor_id: item.conductorId, solicitud_id: item.solicitudId },
+            { claveIdempotencia: `liberar:${item.solicitudId}:${item.conductorId}` }
           );
           return item.conductorId;
         })
@@ -89,4 +87,4 @@ function crearNotificaciones({ clienteM4, clienteM6, rutas, logger }) {
   };
 }
 
-module.exports = { crearNotificaciones, MotivoLiberacion };
+module.exports = { crearNotificaciones };
