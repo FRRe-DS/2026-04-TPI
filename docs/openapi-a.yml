@@ -1,224 +1,473 @@
 openapi: 3.1.0
-
-info: 
-  title: DS 2026 API - Contratos de M5 
-  description: |
-    Todos los contratos del GA del G4.
-
-    No se definen endpoints en esta entrega.
-
+info:
+  title: DS 2026 API - M5 Solicitud y Despacho
   version: 1.0.0
+  description: |
+    Contratos del Grupo 4 para el módulo M5 (RF-5.1 a RF-5.9).
+    Las rutas de esta API se sirven desde M5. Los intercambios entre módulos
+    se detallan en `x-integraciones` y en los esquemas correspondientes.
 
-paths: {
-  /solicitudes:
-      post:
-        summary: Crear una solicitud de viaje
-        description: Registra una nueva solicitud con estado PENDIENTE.
+    ### Flujo de despacho
 
-        requestBody:
-          required: true
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Solicitud"  
+    1. El cliente puede pedir una tarifa orientativa. M5 obtiene la distancia y la
+       duración del trayecto de M4 y solicita a M7 el importe para mostrar.
+    2. El cliente confirma el viaje inmediato o M9 activa una reserva. M5 crea
+       la solicitud en `PENDIENTE` y pasa a `BUSCANDO` al iniciar el despacho.
+    3. M5 consulta `GET /conductores/cercanos` de M4 con el origen y el tipo de
+       vehículo. M4 decide el radio. M5 selecciona candidatos compatibles y
+       habilitados y pide a M4 un bloqueo `RESERVADO` por cada conductor que
+       vaya a recibir una oferta. Solo oferta a los conductores que logró reservar.
+    4. M5 entrega a M3 un lote de ofertas por solicitud con vencimiento de 30
+       segundos. Si hay un error o timeout de entrega, reintenta con los mismos
+       identificadores y vencimiento mientras el lote siga vigente.
+    5. M3 remite la respuesta del conductor a M5. Una única aceptación ganadora
+       deja la oferta `ACEPTADA` y la solicitud `ASIGNADA`. Un rechazo cierra
+       esa oferta y la solicitud sigue `BUSCANDO` mientras queden ofertas vigentes.
+       Cuando se agota la búsqueda sin ganador, la solicitud queda `SIN_DISPONIBILIDAD`.
+    6. M5 comunica a M4 una resolución por conductor reservado. Usa
+       `OFERTA_ACEPTADA` para el ganador y `OFERTA_RECHAZADA` para cerrar
+       los bloqueos sin asignación, incluidos los vencimientos y las cancelaciones.
+       M4 libera la reserva y, para el ganador, avisa a M3 que pase al conductor
+       a no disponible. El TTL de M4 de 10 minutos funciona como respaldo ante
+       fallos y es independiente del plazo de oferta y del plazo global de búsqueda de M5.
 
-        responses:
-          "201":
-            description: Solicitud creada correctamente
-            content:
-              application/json:
-                schema:
-                  $ref: "#/components/schemas/Solicitud_Creada"
+    ### Otras integraciones
 
-          "422":
-            description: Error de validación de los datos enviados
-            content:
-              application/json:
-                schema:
-                  $ref: "#/components/schemas/ErrorDatosRecibidos"
-  /ofertas/:
+    - **M1 y M2**. El frontend envía a M5 el token de acceso JWT emitido
+      por M1 (Keycloak). Para una solicitud inmediata, M5 valida el token
+      del cliente y toma el UUID del claim `sub`. Ese UUID es el `clienteId`
+      de M2 y el `cliente_id` de M5. M5 consulta
+      `GET /api/v1/clientes/{clienteId}/estado-cuenta` con su propio JWT
+      de servicio, emitido por M1 con rol `SERVICIO`. M2 confirma si el
+      cliente está `ACTIVO` o `BLOQUEADO`.
+    - **M4 y M7** participan en la estimación inmediata. M4 aporta distancia
+      y duración del trayecto. M7 calcula la tarifa a partir del tipo de
+      vehículo, la distancia en kilómetros y la duración en minutos enteros.
+      M5 muestra `moneda` y `desglose.total` como importe orientativo.
+    - **M6** recibe `POST /trips` después de la asignación. M5 usa
+      `solicitud_id` como `requestId` estable para reintentar el alta del viaje
+      y mapea `AUTO` y `MOTO` a `CAR` y `MOTORCYCLE`. La solicitud queda
+      `ASIGNADA` mientras M6 gestiona `PENDING_ARRIVAL`, `DRIVER_ARRIVED`,
+      `IN_PROGRESS`, `COMPLETED` o `CANCELLED`. El redespacho ante
+      `requiresRedispatch: true` queda como propuesta fuera de esta versión.
+    - **M8** consume eventos de M5 para notificar hitos de solicitud,
+      asignación y cancelación. El intercambio asíncrono corresponde al
+      catálogo de eventos del proyecto.
+    - **M9** envía `reserva_id`, `cliente_id` y el trayecto a M5 al activar
+      la reserva. La respuesta contiene los dos identificadores de reserva y
+      solicitud y el estado de la solicitud según `Estados.md`. M9 coordina
+      con M7 la estimación de la tarifa de la reserva.
+servers:
+  - url: /api/v1
+    description: Base relativa al host de M5.
+security:
+  - bearerAuth: []
+tags:
+  - name: Estimaciones
+    description: Tarifa orientativa antes de confirmar un viaje.
+  - name: Solicitudes
+    description: Alta, consulta y cancelación de solicitudes.
+  - name: Ofertas
+    description: Consulta de ofertas y registro de respuestas de conductores.
+  - name: Auditoría
+    description: Historial de eventos de despacho.
+
+paths:
+  /solicitudes/estimacion:
     post:
-      summary: Crear oferta con expiracion (RF 5.4)
-      description: Registra una nueva oferta enviada a un conductor asignando una fecha de expiracion.
+      tags: [Estimaciones]
+      operationId: estimarSolicitud
+      summary: Consultar tarifa estimada
+      description: |
+        RF-5.1, RF-4.6 y RF-7.1. M5 consulta a M4 por el trayecto y a M7
+        por el importe. El cliente confirma la creación de la solicitud en
+        una operación separada.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - id_solicitud
-                - conductor_id
-                - tiempo_expiracion_seg
-              properties:
-                id_solicitud:
-                  type: string
-                  format: uuid
-                  description: ID de la solicitud asociada
-                conductor_id:
-                  type: string
-                  format: uuid
-                  description: ID del conductor destinatario
-                tiempo_expiracion_seg:
-                  type: integer
-                  minimum: 1
-                  default: 30
-                  description: Tiempo en segundos para que la oferta expire
+              $ref: '#/components/schemas/TrayectoEstimacion'
+            example:
+              origen_latitud: -27.451
+              origen_longitud: -58.986
+              destino_latitud: -27.465
+              destino_longitud: -58.975
+              tipo_vehiculo: AUTO
       responses:
-        "201":
-          description: Oferta creada con exito
+        '200':
+          description: Tarifa orientativa calculada por M7.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Oferta"
-        "422":
-          description: Error de validacion en los datos enviados
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  detail:
-                    type: array
-                    items:
-                      type: object
+                $ref: '#/components/schemas/TarifaEstimada'
+              example:
+                moneda: ARS
+                total_estimado: 5700
+                distancia_estimada_km: 8.5
+                duracion_estimada_min: 15
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
-  /ofertas/{id_oferta}/respuesta:
-    patch:
-      summary: Aceptar o rechazar una oferta de conductor (RF 5.5)
-      description: >
-        Permite al cliente dueño de la solicitud aceptar o rechazar una oferta
-        PENDIENTE de un conductor. Al aceptar, la solicitud pasa a ACEPTADA.
-        Al rechazar, la solicitud vuelve a PENDIENTE para nueva asignación.
-        En ambos casos se registra el cambio en el historial de despacho.
+  /solicitudes:
+    post:
+      tags: [Solicitudes]
+      operationId: crearSolicitud
+      summary: Crear una solicitud de viaje inmediato
+      description: |
+        RF-5.1. M5 obtiene el cliente_id del sub del JWT del cliente. Si el
+        cuerpo incluye cliente_id, debe coincidir con ese UUID o M5 devuelve
+        403. Para un alta nueva, M5 consulta el estado en M2 con su JWT de
+        servicio. Si el estado es ACTIVO, registra la solicitud en PENDIENTE
+        y la pasa a BUSCANDO al iniciar el despacho.
+      security:
+        - bearerAuth: [CLIENTE]
       parameters:
-        - name: id_oferta
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-          description: ID único de la oferta a responder
-
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - cliente_id
-                - accion
-              properties:
-                cliente_id:
-                  type: string
-                  format: uuid
-                  description: ID del cliente dueño de la solicitud
-                accion:
-                  type: string
-                  enum:
-                    - ACEPTAR
-                    - RECHAZAR
-                  description: Acción a tomar sobre la oferta
-
+              $ref: '#/components/schemas/SolicitudInmediataCreate'
+            example:
+              origen_latitud: -27.451
+              origen_longitud: -58.986
+              destino_latitud: -27.465
+              destino_longitud: -58.975
+              tipo_vehiculo: AUTO
       responses:
-        "200":
-          description: Oferta respondida correctamente
+        '201':
+          $ref: '#/components/responses/SolicitudCreada'
+        '200':
+          description: Reintento de la misma operación. Devuelve la solicitud existente.
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - id_oferta
-                  - id_solicitud
-                  - estado_oferta
-                  - estado_solicitud
-                  - mensaje
-                properties:
-                  id_oferta:
-                    type: string
-                    format: uuid
-                  id_solicitud:
-                    type: string
-                    format: uuid
-                  estado_oferta:
-                    type: string
-                    enum:
-                      - ACEPTADA
-                      - RECHAZADA
-                  estado_solicitud:
-                    type: string
-                    enum:
-                      - ACEPTADA
-                      - PENDIENTE
-                  mensaje:
-                    type: string
+                $ref: '#/components/schemas/Solicitud'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/CuentaClienteNoHabilitada'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
-        "403":
-          description: El cliente no es el dueño de la solicitud asociada
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  detail:
-                    type: string
+  /solicitudes/desde-reserva:
+    post:
+      tags: [Solicitudes]
+      operationId: crearSolicitudDesdeReserva
+      summary: Activar una reserva como solicitud de despacho
+      description: |
+        RF-5.2, RF-9.9 y RF-9.10. Entrada propuesta para el servicio M9
+        autenticado. M9 envía el cliente_id de la reserva vigente y M5
+        consulta el estado de ese cliente en M2 antes del alta. El sub del
+        JWT de M9 identifica al servicio que activa la reserva.
 
-        "404":
-          description: Oferta o solicitud no encontrada
+        Cada reserva_id origina como máximo una solicitud, incluso ante
+        activaciones simultáneas. Un reintento compatible devuelve el mismo
+        solicitud_id y su estado actual. Si cambia el cliente o el trayecto de
+        una reserva ya activada, M5 responde 409.
+      security:
+        - bearerAuth: [SERVICIO]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SolicitudDesdeReservaCreate'
+            example:
+              reserva_id: 81d60c84-d9aa-4f34-9f97-a50a264d2154
+              cliente_id: 1d4ed086-70cd-4ef8-a970-20270d7eab8a
+              origen_latitud: -27.451
+              origen_longitud: -58.986
+              destino_latitud: -27.465
+              destino_longitud: -58.975
+              tipo_vehiculo: AUTO
+      responses:
+        '201':
+          description: Solicitud registrada en PENDIENTE para la reserva.
+          headers:
+            Location:
+              $ref: '#/components/headers/SolicitudLocation'
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  detail:
-                    type: string
+                allOf:
+                  - $ref: '#/components/schemas/ActivacionReserva'
+                  - type: object
+                    properties:
+                      estado:
+                        type: string
+                        enum: [PENDIENTE]
+              example:
+                reserva_id: 81d60c84-d9aa-4f34-9f97-a50a264d2154
+                solicitud_id: 129959d4-8c0a-44b3-a7d5-85971d487cd4
+                estado: PENDIENTE
+        '200':
+          description: Reserva ya activada. Devuelve el identificador y el estado actual de la solicitud.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivacionReserva'
+              example:
+                reserva_id: 81d60c84-d9aa-4f34-9f97-a50a264d2154
+                solicitud_id: 129959d4-8c0a-44b3-a7d5-85971d487cd4
+                estado: BUSCANDO
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/CuentaClienteNoHabilitada'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
-        "409":
-          description: La oferta ya fue respondida anteriormente
+  /solicitudes/{solicitud_id}:
+    parameters:
+      - $ref: '#/components/parameters/SolicitudId'
+    get:
+      tags: [Solicitudes]
+      operationId: obtenerSolicitud
+      summary: Consultar el estado de una solicitud
+      description: |
+        RF-5.6 y RF-5.8. Acceso del cliente titular o de un operador o
+        servicio autorizado. M9 puede consultar las solicitudes que activó
+        desde sus reservas. SIN_DISPONIBILIDAD indica que terminó la búsqueda
+        sin asignación.
+      responses:
+        '200':
+          description: Estado actual de la solicitud.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  detail:
-                    type: string
+                $ref: '#/components/schemas/Solicitud'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
-        "422":
-          description: Error de validación de los datos enviados
+  /solicitudes/{solicitud_id}/cancelar:
+    parameters:
+      - $ref: '#/components/parameters/SolicitudId'
+    post:
+      tags: [Solicitudes]
+      operationId: cancelarSolicitud
+      summary: Cancelar una solicitud antes de la asignación
+      description: |
+        RF-5.7. El cliente titular puede cancelar mientras la solicitud esté
+        BUSCANDO. M5 resuelve de forma atómica la carrera entre cancelación y
+        aceptación. Si se registra la cancelación, cierra la búsqueda,
+        cancela las ofertas pendientes y comunica su resolución a M4. Un
+        reintento de la cancelación devuelve la misma solicitud CANCELADA.
+        M6 gestiona la cancelación después de la asignación.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelacionRequest'
+      responses:
+        '200':
+          description: Solicitud cancelada.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  detail:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        loc:
-                          type: array
-                          items:
-                            type:
-                              - string
-                              - integer
-                        msg:
-                          type: string
-                        type:
-                          type: string
+                allOf:
+                  - $ref: '#/components/schemas/Solicitud'
+                  - type: object
+                    properties:
+                      estado:
+                        type: string
+                        enum: [CANCELADA]
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /solicitudes/{solicitud_id}/ofertas:
+    parameters:
+      - $ref: '#/components/parameters/SolicitudId'
+    get:
+      tags: [Ofertas]
+      operationId: listarOfertasSolicitud
+      summary: Consultar ofertas de una solicitud
+      description: RF-5.4 y RF-5.9. Acceso de operadores o servicios autorizados.
+      responses:
+        '200':
+          description: Ofertas generadas para la solicitud.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Oferta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /conductores/{conductor_id}/ofertas:
+    parameters:
+      - $ref: '#/components/parameters/ConductorId'
+    get:
+      tags: [Ofertas]
+      operationId: listarOfertasConductor
+      summary: Consultar ofertas de un conductor
+      description: Acceso del conductor identificado o de un operador o servicio autorizado.
+      parameters:
+        - name: estado
+          in: query
+          description: Filtra por el estado de la oferta.
+          schema:
+            $ref: '#/components/schemas/EstadoOferta'
+      responses:
+        '200':
+          description: Ofertas dirigidas al conductor.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Oferta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /ofertas/{oferta_id}/responder:
+    parameters:
+      - $ref: '#/components/parameters/OfertaId'
+    post:
+      tags: [Ofertas]
+      operationId: responderOferta
+      summary: Registrar la respuesta del conductor recibida de M3
+      description: |
+        RF-5.5 y RF-5.6. El servicio M3 autenticado envía una respuesta por
+        conductor. M5 verifica el identificador de la ruta, la solicitud
+        asociada y que el conductor sea el destinatario. La primera
+        respuesta se registra mientras la oferta esté PENDIENTE, dentro
+        de su vigencia y con la solicitud BUSCANDO. Una aceptación da 200
+        si esa oferta gana la asignación única de la solicitud. El rechazo
+        registrado también da 200 y permite cerrar el bloqueo de ese conductor.
+
+        M5 reconoce primero la repetición de una respuesta ya registrada. Para
+        las demás respuestas evalúa el conflicto de solicitud (409) antes
+        de la vigencia de la oferta (410). Si pasa vence_en sin respuesta,
+        M5 marca VENCIDA la oferta y comunica el cierre a M4.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RespuestaOfertaRequest'
+            example:
+              solicitud_id: 1d4ed086-70cd-4ef8-a970-20270d7eab8a
+              oferta_id: 3a994ed3-1cd9-4095-9c29-f846a72fb303
+              conductor_id: 4c4157ea-d150-4807-8db5-9eeb52cf9591
+              respuesta: aceptado
+      responses:
+        '200':
+          description: |
+            Respuesta confirmada. En una aceptación el conductor quedó
+            asignado. En un rechazo se registró la decisión. Una respuesta
+            idéntica ya registrada devuelve repetida igual a true.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoRespuestaOferta'
+              examples:
+                registrada:
+                  value:
+                    repetida: false
+                repetida:
+                  value:
+                    repetida: true
+        '400':
+          description: Datos inválidos o identificadores de oferta y solicitud que no coinciden.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problema'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: El conductor no es el destinatario de la oferta o el llamador carece de permiso.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problema'
+        '404':
+          description: Oferta inexistente.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problema'
+        '409':
+          description: Solicitud no disponible para esta respuesta.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ConflictoRespuestaOferta'
+              example:
+                type: urn:m5:problema:solicitud-no-disponible
+                title: Solicitud no disponible
+                status: 409
+                codigo: solicitud_no_disponible
+                motivo: ya_asignada
+        '410':
+          description: Oferta vencida, rechazada o cancelada sin un conflicto de solicitud aplicable.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/OfertaNoVigente'
+              example:
+                type: urn:m5:problema:oferta-no-vigente
+                title: Oferta no vigente
+                status: 410
+                codigo: oferta_no_vigente
 
   /solicitudes/{solicitud_id}/historial:
     parameters:
-    - $ref: '#/components/parameters/SolicitudId'
+      - $ref: '#/components/parameters/SolicitudId'
     get:
-      tags:
-      - Auditoría
+      tags: [Auditoría]
       operationId: obtenerHistorialSolicitud
-      summary: Consultar eventos de auditoría de la solicitud
-      description: RF-5.9.
+      summary: Consultar el historial de despacho
+      description: |
+        RF-5.9. Devuelve los eventos registrados en orden cronológico.
+        Acceso del cliente titular o de un operador o servicio autorizado.
       responses:
         '200':
-          description: Eventos registrados
+          description: Eventos registrados para la solicitud.
           content:
             application/json:
               schema:
@@ -231,247 +480,716 @@ paths: {
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
-}
+
+# Intercambios entre M5 y los módulos que colaboran con el despacho.
+x-integraciones:
+  M2:
+    fuente: M2-openapi(1).yml
+    estado_cuenta:
+      direccion: M5 a M2
+      metodo: GET
+      ruta: /api/v1/clientes/{clienteId}/estado-cuenta
+      descripcion: |
+        M5 se autentica con su JWT de M1 (Keycloak), con rol SERVICIO.
+        El parámetro de ruta clienteId es el UUID del cliente. M5 lo toma
+        del sub autenticado para viajes inmediatos y del cliente_id que
+        envía M9 para reservas. Solo habilita el alta si M2 devuelve ACTIVO.
+        M2 devuelve 404 si el perfil no existe. Si M5 no puede verificar el
+        estado por un fallo de la dependencia, devuelve 503.
+      respuesta:
+        $ref: '#/components/schemas/EstadoCuentaM2'
+  M3:
+    fuente: Contrato M3-M5.md
+    envio_ofertas:
+      direccion: M5 a M3
+      descripcion: |
+        Un lote por solicitud con todas las ofertas de esa solicitud. M3
+        confirma la recepción con 200. Ante error o timeout, M5 repite el
+        mismo envío y M3 deduplica por oferta_id. El método y la ruta de
+        recepción se acuerdan con M3.
+      cuerpo:
+        $ref: '#/components/schemas/LoteOfertasM3'
+    respuesta_conductor:
+      direccion: M3 a M5
+      operationId: responderOferta
+  M4:
+    fuente: Contrato M4-M5.md (respuesta de M4)
+    candidatos:
+      direccion: M5 a M4
+      metodo: GET
+      ruta: /conductores/cercanos
+      descripcion: |
+        RF-5.3. Consulta de solo lectura. M4 recibe las coordenadas del origen y el
+        tipo de vehículo en la URL y decide el radio. Una lista vacía indica
+        ausencia de candidatos. Ante error o timeout, M5 registra
+        ERROR_INTEGRACION y reintenta de forma acotada dentro del plazo
+        de búsqueda.
+        Los nombres de parámetros que se muestran aquí se deben cotejar con
+        el OpenAPI de M4.
+      parametros_consulta:
+        $ref: '#/components/schemas/ConsultaCandidatosM4'
+      respuesta:
+        $ref: '#/components/schemas/ListaCandidatosM4'
+    reserva_conductor:
+      direccion: M5 a M4
+      metodo: POST
+      ruta: /reserva
+      descripcion: |
+        M5 solicita el bloqueo atómico de un conductor elegido con RESERVADO
+        antes de ofertarle. Al cerrarse su oferta, M5 comunica el resultado
+        a M4. La aceptación ganadora produce OFERTA_ACEPTADA. El rechazo,
+        vencimiento, cancelación, cierre por otra oferta ganadora o
+        agotamiento de la búsqueda produce OFERTA_RECHAZADA. Los datos
+        de abajo describen el intercambio.
+        La ruta base y la ubicación del conductor_id se cotejan con M4.
+      datos:
+        $ref: '#/components/schemas/ReservaConductorM4'
+  M7:
+    fuente: Propuesta de contrato a M7.md
+    estimacion:
+      direccion: M5 a M7
+      metodo: POST
+      ruta: /api/v1/tarifas/estimaciones
+      permiso: tarifas:read
+      descripcion: |
+        M5 usa distancia_estimada_km y eta_minutos de GET /rutas/estimacion
+        de M4. Los envía como distancia_km y duracion_estimada_min. Si el ETA
+        tiene decimales, M5 lo redondea hacia arriba al minuto entero para M7.
+        La ruta, el permiso y la codificación auto/moto provienen del
+        prototipo. M5 toma moneda y desglose.total de la respuesta.
+      cuerpo:
+        $ref: '#/components/schemas/SolicitudEstimacionM7'
+      respuesta:
+        $ref: '#/components/schemas/ResultadoEstimacionM7'
+  M9:
+    fuentes: [Propuesta de contrato a M9.md, Estados.md]
+    activacion:
+      direccion: M9 a M5
+      operationId: crearSolicitudDesdeReserva
+      descripcion: |
+        El estado devuelto corresponde a la solicitud de M5. M9 conserva
+        la responsabilidad sobre la reserva y obtiene su tarifa de M7.
+        La propuesta menciona el envío de la tarifa a M5. El campo opcional
+        tarifa_estimada documenta un formato sujeto a acuerdo con M9.
 
 components:
-
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Token de acceso emitido por M1 (Keycloak). M5 valida la firma, el
+        emisor, la audiencia, el vencimiento y los permisos de la operación.
+        El sub de un token CLIENTE es el UUID del perfil en M2.
+  parameters:
+    SolicitudId:
+      name: solicitud_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Identificador'
+    OfertaId:
+      name: oferta_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Identificador'
+    ConductorId:
+      name: conductor_id
+      in: path
+      required: true
+      description: UUID del conductor compartido entre M3, M4 y M5.
+      schema:
+        $ref: '#/components/schemas/Identificador'
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        Una misma clave, operación, llamador y cuerpo recuperan la solicitud
+        existente. Si se usa la misma clave con otro cuerpo, M5 devuelve 409.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+  headers:
+    SolicitudLocation:
+      description: Ruta de consulta de la solicitud creada.
+      schema:
+        type: string
+        format: uri-reference
+  responses:
+    SolicitudCreada:
+      description: Solicitud registrada en PENDIENTE.
+      headers:
+        Location:
+          $ref: '#/components/headers/SolicitudLocation'
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Solicitud'
+              - type: object
+                properties:
+                  estado:
+                    type: string
+                    enum: [PENDIENTE]
+    BadRequest:
+      description: Datos de entrada inválidos.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+    Unauthorized:
+      description: JWT ausente o inválido.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+    Forbidden:
+      description: La identidad autenticada carece de permiso.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+    NotFound:
+      description: Recurso inexistente.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+    Conflict:
+      description: Conflicto de estado o idempotencia.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+    UnprocessableEntity:
+      description: Los datos incumplen una regla de negocio.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+    CuentaClienteNoHabilitada:
+      description: M2 informa que el cliente está BLOQUEADO o que su perfil no existe.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+    ServiceUnavailable:
+      description: Dependencia necesaria para la operación temporalmente no disponible.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
   schemas:
-  
-    # Consulta que M5 necesita realizar a M2.
-    ConsultaCliente:
+    Identificador:
+      type: string
+      format: uuid
+    EstadoCuentaM2:
       type: object
-      additionalProperties: false
-      required:
-        - Email
+      required: [clienteId, estado, bloqueosVigentes]
       properties:
-        Email:
+        clienteId:
+          $ref: '#/components/schemas/Identificador'
+        estado:
           type: string
-          description: |
-            Identificador de identidad que M2 utiliza
-            para localizar el perfil correspondiente.
-
-    DatosCliente:
+          enum: [ACTIVO, BLOQUEADO]
+        bloqueosVigentes:
+          type: array
+          description: Detalle de bloqueos definido por M2. M5 decide a partir de estado.
+          items:
+            type: object
+    Latitud:
+      type: number
+      format: double
+      minimum: -90
+      maximum: 90
+    Longitud:
+      type: number
+      format: double
+      minimum: -180
+      maximum: 180
+    TipoVehiculo:
+      type: string
+      enum: [AUTO, MOTO]
+    Trayecto:
+      type: object
+      required:
+        - origen_latitud
+        - origen_longitud
+        - destino_latitud
+        - destino_longitud
+        - tipo_vehiculo
+      properties:
+        origen_latitud:
+          $ref: '#/components/schemas/Latitud'
+        origen_longitud:
+          $ref: '#/components/schemas/Longitud'
+        destino_latitud:
+          $ref: '#/components/schemas/Latitud'
+        destino_longitud:
+          $ref: '#/components/schemas/Longitud'
+        tipo_vehiculo:
+          $ref: '#/components/schemas/TipoVehiculo'
+    TrayectoEstimacion:
       type: object
       additionalProperties: false
-      required:
-        - cliente_id
-        - nombre_cliente
-
+      required: [origen_latitud, origen_longitud, destino_latitud, destino_longitud, tipo_vehiculo]
       properties:
+        origen_latitud:
+          $ref: '#/components/schemas/Latitud'
+        origen_longitud:
+          $ref: '#/components/schemas/Longitud'
+        destino_latitud:
+          $ref: '#/components/schemas/Latitud'
+        destino_longitud:
+          $ref: '#/components/schemas/Longitud'
+        tipo_vehiculo:
+          $ref: '#/components/schemas/TipoVehiculo'
+    DatosTrayectoCliente:
+      allOf:
+        - $ref: '#/components/schemas/Trayecto'
+        - type: object
+          required: [cliente_id]
+          properties:
+            cliente_id:
+              allOf:
+                - $ref: '#/components/schemas/Identificador'
+              description: UUID del perfil de cliente administrado por M2.
+    SolicitudInmediataCreate:
+      type: object
+      additionalProperties: false
+      required: [origen_latitud, origen_longitud, destino_latitud, destino_longitud, tipo_vehiculo]
+      properties:
+        origen_latitud:
+          $ref: '#/components/schemas/Latitud'
+        origen_longitud:
+          $ref: '#/components/schemas/Longitud'
+        destino_latitud:
+          $ref: '#/components/schemas/Latitud'
+        destino_longitud:
+          $ref: '#/components/schemas/Longitud'
+        tipo_vehiculo:
+          $ref: '#/components/schemas/TipoVehiculo'
         cliente_id:
-          type: string
-          format: uuid
-          description: Identificador único del cliente gestionado por M2.
-
-        nombre_cliente:
-          type: string
-          minLength: 1
-          description: Nombre del cliente asociado al identificador consultado.
-
-    ConsultaReserva:
+          allOf:
+            - $ref: '#/components/schemas/Identificador'
+          description: Campo opcional de compatibilidad. Si se envía, debe coincidir con el sub del JWT de cliente.
+    SolicitudDesdeReservaCreate:
+      description: Cuerpo provisional para la activación de una reserva vigente por M9.
       type: object
       additionalProperties: false
       required:
-        - identidad_id
+        - reserva_id
+        - cliente_id
+        - origen_latitud
+        - origen_longitud
+        - destino_latitud
+        - destino_longitud
+        - tipo_vehiculo
       properties:
-        identidad_id:
-          type: string
-          description: Identificador estable de la identidad del cliente.
-
-# formato de la solicitud
-    Solicitud:
+        reserva_id:
+          $ref: '#/components/schemas/Identificador'
+        cliente_id:
+          $ref: '#/components/schemas/Identificador'
+        origen_latitud:
+          $ref: '#/components/schemas/Latitud'
+        origen_longitud:
+          $ref: '#/components/schemas/Longitud'
+        destino_latitud:
+          $ref: '#/components/schemas/Latitud'
+        destino_longitud:
+          $ref: '#/components/schemas/Longitud'
+        tipo_vehiculo:
+          $ref: '#/components/schemas/TipoVehiculo'
+        tarifa_estimada:
           type: object
           additionalProperties: false
-          required:
-            - solicitud_id
-            - cliente_id
-            - nombre_cliente
-            - conductor_id  #Mantendría Solicitud como concepto central del Grupo A, pero corregiría los campos obligatorios y dejaría conductor_id opcional mientras no exista una asignación.
-            - nombre_conductor
-            - origen_latitud #ver como tratar las ubicaciones.
-            - origen_longitud
-            - destino_latitud
-            - destino_longitud
-            - tipo_vehiculo
-            - estado
-
+          required: [moneda, total_estimado]
+          description: Importe orientativo de la reserva calculado por M7 y enviado por M9. Formato provisional.
+          properties:
+            moneda:
+              $ref: '#/components/schemas/Moneda'
+            total_estimado:
+              type: number
+              minimum: 0
+    ActivacionReserva:
+      type: object
+      additionalProperties: false
+      required: [reserva_id, solicitud_id, estado]
+      properties:
+        reserva_id:
+          $ref: '#/components/schemas/Identificador'
+        solicitud_id:
+          $ref: '#/components/schemas/Identificador'
+        estado:
+          allOf:
+            - $ref: '#/components/schemas/EstadoSolicitud'
+          description: Estado de la solicitud de despacho gestionada por M5.
+    EstadoSolicitud:
+      type: string
+      enum: [PENDIENTE, BUSCANDO, ASIGNADA, CANCELADA, SIN_DISPONIBILIDAD]
+      description: |
+        PENDIENTE es el estado de alta. BUSCANDO indica que comenzó el
+        despacho. La búsqueda termina en ASIGNADA si gana un conductor,
+        CANCELADA si cancela el cliente o SIN_DISPONIBILIDAD si se agota sin
+        asignación.
+    EstadoOferta:
+      type: string
+      enum: [PENDIENTE, ACEPTADA, RECHAZADA, VENCIDA, CANCELADA]
+      description: |
+        PENDIENTE espera una decisión. ACEPTADA corresponde a la única oferta
+        ganadora. RECHAZADA registra un rechazo y VENCIDA indica que pasó su
+        plazo de respuesta. CANCELADA registra el retiro de la oferta al
+        cerrarse el despacho por asignación o cancelación.
+    EstadoBusqueda:
+      type: string
+      enum: [ACTIVA, AGOTADA, FINALIZADA]
+      description: |
+        ACTIVA indica despacho en curso. AGOTADA indica que la búsqueda
+        terminó sin asignación. FINALIZADA indica cierre por asignación
+        o cancelación.
+    Solicitud:
+      allOf:
+        - $ref: '#/components/schemas/DatosTrayectoCliente'
+        - type: object
+          required: [solicitud_id, estado, creada_en]
           properties:
             solicitud_id:
-              type: string
-              format: uuid
-              description: Identificador de la solicitud creada por M5.
-            
-            cliente_id:
-              type: string
-              format: uuid
-              description: Identificador del cliente que realizó la solicitud.
-            
+              $ref: '#/components/schemas/Identificador'
             nombre_cliente:
               type: string
               minLength: 1
-              description: Nombre del cliente que realizó la solicitud.
-
-            conductor_id:
-              type: 
-              - string
-              - "null"
-              format: uuid
-              description: Identificador del conductor que aceptó la solicitud.
-
-            nombre_conductor:
-              type: 
-              - string
-              - "null"
-              minLength: 1
-              description: Nombre del conductor que aceptó la solicitud.
-
-            origen_latitud:
-              type: number
-              format: float
-              description: Latitud de la ubicación actual del cliente.
-
-            origen_longitud:
-              type: number
-              format: float
-              description: Longitud de la ubicación actual del cliente.
-
-            destino_latitud:
-              type: number
-              format: float
-              description: Latitud del destino del cliente.
-
-            destino_longitud:
-              type: number
-              format: float
-              description: Longitud del destino del cliente.
-
-            tipo_vehiculo:
-              $ref: '#/components/schemas/TipoVehiculo'
-            
+              description: Nombre del cliente si está disponible en la solicitud.
             estado:
+              $ref: '#/components/schemas/EstadoSolicitud'
+            estado_busqueda:
+              allOf:
+                - $ref: '#/components/schemas/EstadoBusqueda'
+              description: Se informa a partir del inicio del despacho.
+            conductor_id:
+              allOf:
+                - $ref: '#/components/schemas/Identificador'
+              description: UUID del conductor que ganó la asignación.
+            nombre_conductor:
               type: string
-              description: | 
-                Estado de la solicitud. puede ser uno de los siguientes valores:
-                - pendiente: La solicitud fue creada y está esperando asignación
-                - finalizada: El viaje fue completado 
-                - buscando: Se están ofreciendo ofertas a conductores
-                - asignada: Un conductor aceptó y ganó
-                - cancelada: La canceló el cliente
-                - sin_disponibilidad: La búsqueda se agotó y no hay conductor
-
-# Solicitud de G1 a G2 para obtener los datos del conductor que aceptó la solicitud.
-    SolicitarDatosConductor:
+              minLength: 1
+              description: Nombre del conductor asignado cuando M3 lo informa.
+            reserva_id:
+              allOf:
+                - $ref: '#/components/schemas/Identificador'
+              description: Se informa en solicitudes activadas desde una reserva de M9.
+            tarifa_estimada:
+              allOf:
+                - $ref: '#/components/schemas/ImporteEstimado'
+              description: Importe orientativo cuando M9 lo informa en la activación.
+            viaje_id:
+              allOf:
+                - $ref: '#/components/schemas/Identificador'
+              description: Se informa cuando M6 confirma el alta del viaje.
+            creada_en:
+              type: string
+              format: date-time
+            actualizada_en:
+              type: string
+              format: date-time
+          anyOf:
+            - properties:
+                estado:
+                  not:
+                    enum: [ASIGNADA]
+            - required: [conductor_id]
+    VencimientoOferta:
+      type: string
+      format: date-time
+      pattern: '(?:Z|\+00:00)$'
+      description: Marca ISO 8601 en UTC a los 30 segundos de la emisión.
+      example: '2026-11-07T23:00:30Z'
+    Oferta:
+      type: object
+      required: [oferta_id, solicitud_id, conductor_id, estado, creada_en, vence_en]
+      properties:
+        oferta_id:
+          $ref: '#/components/schemas/Identificador'
+        solicitud_id:
+          $ref: '#/components/schemas/Identificador'
+        conductor_id:
+          $ref: '#/components/schemas/Identificador'
+        estado:
+          $ref: '#/components/schemas/EstadoOferta'
+        creada_en:
+          type: string
+          format: date-time
+        vence_en:
+          $ref: '#/components/schemas/VencimientoOferta'
+        respondida_en:
+          type: string
+          format: date-time
+    LoteOfertasM3:
+      description: |
+        Cuerpo de envío de M5 a M3. El vencimiento se comparte entre las
+        ofertas del lote. Cada conductor figura una vez, con su propio
+        oferta_id.
       type: object
       additionalProperties: false
       required:
         - solicitud_id
-        - origen
-        - destino
+        - origen_latitud
+        - origen_longitud
+        - destino_latitud
+        - destino_longitud
         - tipo_vehiculo
-
+        - ofertas
+        - vence_en
       properties:
         solicitud_id:
-          $ref: '#/components/schemas/Solicitud/properties/solicitud_id'
-
-        origen:
-          type: object
-          additionalProperties: false
-          required:
-            - latitud
-            - longitud
-
-          properties:
-            latitud:
-              $ref: '#/components/schemas/Solicitud/properties/origen_latitud'
-
-            longitud:
-              $ref: '#/components/schemas/Solicitud/properties/origen_longitud'
-
-        destino:
-          type: object
-          additionalProperties: false
-          required:
-            - latitud
-            - longitud
-
-          properties:
-            latitud:
-              $ref: '#/components/schemas/Solicitud/properties/destino_latitud'
-
-            longitud:
-              $ref: '#/components/schemas/Solicitud/properties/destino_longitud'
-
-        tipo_vehiculo:
-          $ref: '#/components/schemas/Solicitud/properties/tipo_vehiculo'
-
-# lo que nos devuelve el G2 con los datos del conductor que aceptó la solicitud.
-    DatosConductor:
-      type: object
-      additionalProperties: false
-      required:
-        - conductor_id
-        - nombre_conductor
-
-      properties:
-        conductor_id:
-          type: string
-          format: uuid
-          description: Identificador único del conductor gestionado por M3.
-
-        nombre_conductor:
-          type: string
-          minLength: 1
-          description: Nombre del conductor asociado al identificador consultado.
-
+          $ref: '#/components/schemas/Identificador'
+        origen_latitud:
+          $ref: '#/components/schemas/Latitud'
+        origen_longitud:
+          $ref: '#/components/schemas/Longitud'
+        destino_latitud:
+          $ref: '#/components/schemas/Latitud'
+        destino_longitud:
+          $ref: '#/components/schemas/Longitud'
         tipo_vehiculo:
           $ref: '#/components/schemas/TipoVehiculo'
-
-    TipoVehiculo:
+        ofertas:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [oferta_id, conductor_id]
+            properties:
+              oferta_id:
+                $ref: '#/components/schemas/Identificador'
+              conductor_id:
+                $ref: '#/components/schemas/Identificador'
+        vence_en:
+          $ref: '#/components/schemas/VencimientoOferta'
+    RespuestaOfertaRequest:
+      type: object
+      additionalProperties: false
+      required: [solicitud_id, oferta_id, conductor_id, respuesta]
+      properties:
+        solicitud_id:
+          allOf:
+            - $ref: '#/components/schemas/Identificador'
+          description: Debe corresponder a la solicitud asociada a la oferta.
+        oferta_id:
+          allOf:
+            - $ref: '#/components/schemas/Identificador'
+          description: Debe coincidir con el UUID de oferta de la URL.
+        conductor_id:
+          allOf:
+            - $ref: '#/components/schemas/Identificador'
+          description: UUID del conductor que responde, informado por M3.
+        respuesta:
+          type: string
+          enum: [aceptado, rechazado]
+          description: Decisión comunicada por M3.
+    ResultadoRespuestaOferta:
+      type: object
+      required: [repetida]
+      properties:
+        repetida:
+          type: boolean
+          description: Verdadero si M5 ya había registrado la misma respuesta para la oferta.
+    ConsultaCandidatosM4:
+      type: object
+      additionalProperties: false
+      required: [origen_latitud, origen_longitud, tipo_vehiculo]
+      properties:
+        origen_latitud:
+          $ref: '#/components/schemas/Latitud'
+        origen_longitud:
+          $ref: '#/components/schemas/Longitud'
+        tipo_vehiculo:
+          type: string
+          minLength: 1
+          description: Tipo de vehículo solicitado, con la codificación que espera M4.
+    ListaCandidatosM4:
+      type: object
+      required: [candidatos]
+      properties:
+        candidatos:
+          type: array
+          items:
+            type: object
+            required: [conductor_id, distancia_m, tipo_vehiculo]
+            properties:
+              conductor_id:
+                allOf:
+                  - $ref: '#/components/schemas/Identificador'
+                description: Mismo UUID que utiliza M3 para el conductor.
+              distancia_m:
+                type: number
+                minimum: 0
+                description: Distancia al origen en metros.
+              tipo_vehiculo:
+                type: string
+                minLength: 1
+    ReservaConductorM4:
+      type: object
+      required: [conductor_id, estado]
+      properties:
+        conductor_id:
+          $ref: '#/components/schemas/Identificador'
+        estado:
+          type: string
+          enum: [RESERVADO, OFERTA_ACEPTADA, OFERTA_RECHAZADA]
+          description: Estado comunicado a M4 para bloquear o resolver la reserva temporal.
+    CancelacionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        motivo:
+          type: string
+          maxLength: 500
+    EventoAuditoria:
+      type: object
+      required: [id, solicitud_id, tipo, fecha]
+      properties:
+        id:
+          $ref: '#/components/schemas/Identificador'
+        solicitud_id:
+          $ref: '#/components/schemas/Identificador'
+        oferta_id:
+          $ref: '#/components/schemas/Identificador'
+        tipo:
+          type: string
+          enum:
+            - SOLICITUD_CREADA
+            - BUSQUEDA_INICIADA
+            - OFERTA_EMITIDA
+            - OFERTA_ACEPTADA
+            - OFERTA_RECHAZADA
+            - OFERTA_VENCIDA
+            - OFERTA_CANCELADA
+            - CONDUCTOR_ASIGNADO
+            - SOLICITUD_CANCELADA
+            - BUSQUEDA_AGOTADA
+            - ERROR_INTEGRACION
+        fecha:
+          type: string
+          format: date-time
+        detalle:
+          type: string
+          description: Contexto del evento, por ejemplo el motivo de cierre de la búsqueda.
+    SolicitudEstimacionM7:
+      type: object
+      additionalProperties: false
+      required: [tipo_vehiculo, distancia_km, duracion_estimada_min]
+      properties:
+        tipo_vehiculo:
+          type: string
+          enum: [auto, moto]
+          description: Codificación para M7 según el prototipo.
+        distancia_km:
+          type: number
+        duracion_estimada_min:
+          type: integer
+    ResultadoEstimacionM7:
+      type: object
+      required: [moneda, desglose]
+      properties:
+        moneda:
+          $ref: '#/components/schemas/Moneda'
+        desglose:
+          type: object
+          required: [tarifa_base, cargo_distancia, cargo_tiempo, multiplicador_demanda, total]
+          properties:
+            tarifa_base:
+              type: number
+            cargo_distancia:
+              type: number
+            cargo_tiempo:
+              type: number
+            multiplicador_demanda:
+              type: integer
+            total:
+              type: number
+    Moneda:
       type: string
-      enum:
-        - AUTO
-        - MOTO
-
-    Solicitud_Creada: 
+      minLength: 1
+      example: ARS
+    ImporteEstimado:
       type: object
-        required:
-          - mensaje
-          - solicitud_id
-          - estado
-        properties:
-          mensaje:
-            type: string
-          solicitud_id:
-            type: string
-            format: uuid
-          estado:
-            type: string
-            enum:
-              - PENDIENTE
-
-    ErrorDatosRecibidos:
+      required: [moneda, total_estimado]
+      properties:
+        moneda:
+          $ref: '#/components/schemas/Moneda'
+        total_estimado:
+          type: number
+          minimum: 0
+          description: Importe orientativo calculado por M7.
+    TarifaEstimada:
+      allOf:
+        - $ref: '#/components/schemas/ImporteEstimado'
+        - type: object
+          required: [distancia_estimada_km, duracion_estimada_min]
+          properties:
+            distancia_estimada_km:
+              type: number
+              minimum: 0
+              not:
+                enum: [0]
+              description: Distancia estimada del trayecto informada por M4.
+            duracion_estimada_min:
+              type: number
+              minimum: 0
+              not:
+                enum: [0]
+              description: Duración estimada del trayecto entre origen y destino.
+    Problema:
       type: object
-        required:
-          - detail
-        properties:
-          detail:
-            type: array
-            items:
-              type: object
-              required:
-                - loc
-                - msg
-                - type
-              properties:
-                loc:
-                  type: array
-                  items:
-                    type:
-                      - string
-                      - integer
-                msg:
-                  type: string
-                type:
-                  type: string
-                input:
-                  description: Valor recibido que produjo el error
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri-reference
+    ConflictoRespuestaOferta:
+      allOf:
+        - $ref: '#/components/schemas/Problema'
+        - type: object
+          required: [codigo, motivo]
+          properties:
+            status:
+              type: integer
+              enum: [409]
+            codigo:
+              type: string
+              enum: [solicitud_no_disponible]
+            motivo:
+              type: string
+              enum: [ya_asignada, solicitud_cancelada, ya_aceptada]
+              description: |
+                ya_asignada indica que ganó otro conductor.
+                solicitud_cancelada indica que canceló el cliente.
+                ya_aceptada indica que el ganador intentó rechazar la misma oferta.
+    OfertaNoVigente:
+      allOf:
+        - $ref: '#/components/schemas/Problema'
+        - type: object
+          required: [codigo]
+          properties:
+            status:
+              type: integer
+              enum: [410]
+            codigo:
+              type: string
+              enum: [oferta_no_vigente]
