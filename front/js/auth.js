@@ -1,10 +1,11 @@
 
 (() => {
   const pageRoles = {
-    '/ventana-de-solicitud.html': 'cliente',
-    '/solicitudes.html': 'encargado',
-    '/ventana-administrador.html': 'administrador'
+    '/ventana-de-solicitud.html': 'clientes-be',
+    '/solicitudes.html': 'solicitud-be'
   };
+
+  const adminPage = '/ventana-administrador.html';
 
   const path = location.pathname === '/'
     ? '/ventana-de-solicitud.html'
@@ -13,6 +14,7 @@
   const requiredRole = pageRoles[path];
   const nativeFetch = window.fetch.bind(window);
 
+  // Agregar el token a las llamadas de la API.
   window.fetch = async (input, options = {}) => {
     const url = typeof input === 'string' ? input : input.url;
 
@@ -33,7 +35,6 @@
   };
 
   window.authReady = (async () => {
-    // Obtener configuración del servidor
     const configResponse = await nativeFetch('/auth-config.json');
 
     if (!configResponse.ok) {
@@ -46,12 +47,10 @@
       throw new Error('Falta configurar KEYCLOAK_URL, KEYCLOAK_REALM o KEYCLOAK_CLIENT_ID.');
     }
 
-    // Importar el adaptador instalado mediante npm
     const { default: Keycloak } = await import(
       '/node_modules/keycloak-js/lib/keycloak.js'
     );
 
-    // Crear instancia de Keycloak
     const keycloak = new Keycloak({
       url: config.url,
       realm: config.realm,
@@ -60,24 +59,23 @@
 
     window.keycloak = keycloak;
 
-    // Iniciar autenticación
     await keycloak.init({
       onLoad: 'login-required',
       pkceMethod: 'S256',
       checkLoginIframe: false
     });
 
-    // Comprobar roles del usuario
+    // Roles centrales de M5.
     const roles = keycloak.realmAccess?.roles || [];
 
-    const role = ['administrador', 'encargado', 'cliente']
+    const role = ['solicitud-be', 'clientes-be']
       .find(candidate => roles.includes(candidate));
 
     if (!role) {
       document.body.innerHTML = `
         <main style="font:16px sans-serif;padding:3rem">
           <h1>Sin permiso asignado</h1>
-          <p>Pedile al administrador que te asigne un rol.</p>
+          <p>Tu usuario no tiene asignado un rol habilitado para el módulo 5.</p>
           <button id="logout">Cerrar sesión</button>
         </main>
       `;
@@ -86,26 +84,42 @@
       return;
     }
 
-    // Comprobar que el usuario acceda a su ventana correspondiente
-    if (requiredRole && role !== requiredRole) {
-      const home = {
-        cliente: '/ventana-de-solicitud.html',
-        encargado: '/solicitudes.html',
-        administrador: '/ventana-administrador.html'
-      }[role];
+    // El administrador queda deshabilitado hasta que exista
+    // un rol administrativo confirmado para M5.
+    if (path === adminPage) {
+      document.body.innerHTML = `
+        <main style="font:16px sans-serif;padding:3rem">
+          <h1>Ventana no habilitada</h1>
+          <p>El módulo 5 no tiene configurado actualmente un rol administrador.</p>
+          <button id="logout">Cerrar sesión</button>
+        </main>
+      `;
 
-      location.replace(home);
+      document.getElementById('logout').onclick = () => keycloak.logout();
       return;
     }
 
-    // Mostrar solamente los enlaces correspondientes al rol
+    // Comprobar que el usuario acceda a su ventana.
+    if (requiredRole && role !== requiredRole) {
+      const home = {
+        'clientes-be': '/ventana-de-solicitud.html',
+        'solicitud-be': '/solicitudes.html'
+      }[role];
+
+      if (home && path !== home) {
+        location.replace(home);
+        return;
+      }
+    }
+
+    // Mostrar solamente los enlaces del rol correspondiente.
     document.querySelectorAll('[data-role-link]').forEach(link => {
       if (link.dataset.roleLink !== role) {
         link.remove();
       }
     });
 
-    // Configurar cierre de sesión
+    // Configurar cierre de sesión.
     document.querySelectorAll('[data-logout]').forEach(button => {
       button.addEventListener('click', () => keycloak.logout());
     });
@@ -119,7 +133,7 @@
       <main style="font:16px sans-serif;padding:3rem">
         <h1>Error de autenticación</h1>
         <p>${String(error.message || error)}</p>
-        <p>Verificá la configuración de Keycloak y recargá.</p>
+        <p>Verificá la configuración del Keycloak central y recargá.</p>
       </main>
     `;
 

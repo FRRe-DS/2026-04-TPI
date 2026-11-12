@@ -1,25 +1,209 @@
 openapi: 3.1.0
 
 info: 
-  title: DS 2026 API - Contratos de M5 
+  title: DS 2026 API - Módulo M5 Solicitudes
   description: |
-    Todos los contratos del GA del G4.
+    Contrato de integración de M5 con el frontend y el módulo M2.
 
-    No se definen endpoints en esta entrega.
+    Para obtener el perfil y las direcciones favoritas, M5 usa la API HTTP de
+    M2 y nunca accede directamente a la base de datos de M2. El endpoint de
+    perfil de M5 deriva clienteId del claim sub del token autenticado y reenvía
+    el mismo token a M2.
 
-  version: 1.0.0
+    M2 debe confiar en el emisor, issuer y claves públicas del token usado por
+    M5. Para la prueba local se puede usar el Keycloak de M5 solo si M2 está
+    configurado para validar ese mismo realm y el token contiene el rol CLIENTE
+    y un sub UUID que coincide con un perfil existente en M2.
 
-paths: {}
+    El login de Keycloak autentica una identidad, no consulta la base de M2.
+    M5 comprueba la existencia del perfil después del login al consultar este
+    endpoint; si M2 responde 404, el usuario no tiene perfil habilitado en M2.
+  version: 1.1.0
+
+servers:
+  - url: http://localhost:3005
+    description: Frontend y API BFF de M5 en desarrollo local.
+
+paths:
+  /api/cliente/perfil:
+    get:
+      tags:
+        - Cliente
+      operationId: obtenerPerfilYDireccionesFavoritas
+      summary: Obtener perfil y direcciones favoritas del cliente autenticado
+      description: |
+        M5 obtiene clienteId del claim sub del token. No acepta un clienteId
+        arbitrario en la ruta ni en los parámetros. Reenvía el bearer token
+        recibido a estos endpoints de M2:
+
+        - GET /api/v1/clientes/{clienteId}
+        - GET /api/v1/clientes/{clienteId}/direcciones?tipo=FAVORITA&page={direccionPage}&size={direccionSize}
+
+        M2 requiere el rol CLIENTE u OPERADOR para ambas consultas. El token
+        debe ser verificable por M2 y su sub debe ser el clienteId del perfil.
+        M5 transforma los nombres de propiedades de M2 (camelCase) a los
+        nombres definidos en esta respuesta (snake_case). El perfil debe estar
+        creado previamente en M2 con el mismo clienteId. M5 no se conecta a la
+        base de datos de M2.
+      security:
+        - tokenUsuario: []
+      parameters:
+        - name: direccionPage
+          in: query
+          required: false
+          description: Página de direcciones favoritas, desde cero.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: direccionSize
+          in: query
+          required: false
+          description: Cantidad de direcciones por página (máximo 100, como en M2).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Perfil y página de direcciones favoritas obtenidos desde M2.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerfilClienteM5'
+        '401':
+          description: Token ausente, inválido o rechazado por M5/M2.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorIntegracion'
+        '403':
+          description: El token no tiene un rol permitido o no corresponde al cliente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorIntegracion'
+        '404':
+          description: El usuario autenticado no tiene un perfil de cliente en M2.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorIntegracion'
+        '502':
+          description: M2 respondió con datos que no cumplen su contrato.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorIntegracion'
+        '503':
+          description: M2 no está disponible o no se puede alcanzar desde M5.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorIntegracion'
 
 components:
   securitySchemes:
-    tokenM1:
+    tokenUsuario:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Token de acceso emitido por M1.
+      description: |
+        Token de acceso del cliente emitido por el proveedor de identidad
+        acordado. Para consultar M2, M2 también debe confiar en su emisor,
+        validar su firma y reconocer el rol CLIENTE.
 
   schemas:
+    PerfilClienteM5:
+      type: object
+      additionalProperties: false
+      required:
+        - cliente
+        - direccionesFavoritas
+      properties:
+        cliente:
+          $ref: '#/components/schemas/DatosCliente'
+        direccionesFavoritas:
+          $ref: '#/components/schemas/PaginaDireccionesFavoritas'
+
+    PaginaDireccionesFavoritas:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - page
+        - size
+        - totalElementos
+        - totalPaginas
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DireccionFavorita'
+        page:
+          type: integer
+          minimum: 0
+        size:
+          type: integer
+          minimum: 1
+        totalElementos:
+          type: integer
+          minimum: 0
+        totalPaginas:
+          type: integer
+          minimum: 0
+
+    DireccionFavorita:
+      type: object
+      additionalProperties: false
+      required:
+        - direccion_id
+        - tipo
+        - texto
+      properties:
+        direccion_id:
+          type: string
+          format: uuid
+          description: Corresponde a direccionId en la respuesta de M2.
+        tipo:
+          type: string
+          const: FAVORITA
+        alias:
+          type: string
+          description: Alias opcional devuelto por M2.
+        texto:
+          type: string
+          description: Dirección legible devuelta por M2.
+        coordenadas:
+          $ref: '#/components/schemas/Coordenadas'
+
+    Coordenadas:
+      type: object
+      additionalProperties: false
+      required:
+        - latitud
+        - longitud
+      properties:
+        latitud:
+          type: number
+          minimum: -90
+          maximum: 90
+        longitud:
+          type: number
+          minimum: -180
+          maximum: 180
+
+    ErrorIntegracion:
+      type: object
+      additionalProperties: false
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Mensaje seguro para informar el error al frontend.
+
     # Identidad autenticada obtenida a partir del token validado.
     IdentidadAutenticada:
       type: object
@@ -30,8 +214,9 @@ components:
         identidad_id:
           type: string
           description: |
-            Identificador estable del usuario autenticado,
-            obtenido del token validado por M1.
+            Identificador estable del usuario autenticado. Para consultar el
+            perfil en M2, corresponde al claim sub y debe coincidir con
+            clienteId.
 
     # Consulta que M5 necesita realizar a M2.
     ConsultaCliente:
@@ -43,8 +228,8 @@ components:
         identidad_id:
           type: string
           description: |
-            Identificador de identidad que M2 utiliza
-            para localizar el perfil correspondiente.
+            Identificador de identidad que M5 resuelve del claim sub y que M2
+            usa como clienteId para localizar el perfil correspondiente.
 
     DatosCliente:
       type: object
@@ -57,7 +242,9 @@ components:
         cliente_id:
           type: string
           format: uuid
-          description: Identificador único del cliente gestionado por M2.
+          description: |
+            Identificador único del cliente gestionado por M2; debe coincidir
+            con el claim sub del token de cliente.
 
         nombre_cliente:
           type: string
@@ -221,4 +408,3 @@ components:
       enum:
         - AUTO
         - MOTO
-
