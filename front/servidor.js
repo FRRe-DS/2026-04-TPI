@@ -59,6 +59,8 @@ function mapDbToUi(row) {
     origen: row.origen,
     destino: row.destino,
     tipoVehiculo: row.tipoVehiculo,
+    vehiculo_id: row.vehiculo_id ?? null,
+    costo: row.costo ?? null,
     tipoActivacion: row.tipoActivacion,
     reservaId: row.reservaId || null,
     conductorId: row.conductorId || null,
@@ -287,7 +289,8 @@ async function requireRole(req, requiredRole) {
     return {
       roles,
       email: token.email || '',
-      username: token.preferred_username || ''
+      username: token.preferred_username || '',
+      nombre: [token.given_name, token.family_name].filter(Boolean).join(' ').trim()
     };
 
   } catch (error) {
@@ -369,7 +372,7 @@ http.createServer(async (req, res) => {
       });
 
       return json(res, 201, {
-        solicitud: mapDbToUi(row),
+        solicitud: { ...mapDbToUi(row), clienteNombre: auth.nombre || auth.username || 'Cliente' },
         persistida: true
       });
 
@@ -380,6 +383,24 @@ http.createServer(async (req, res) => {
         error:
           `${error.message} Verificá que la API de bd esté ejecutándose en ${API_URL}.`
       });
+    }
+  }
+
+  // CANCELAR VIAJE ACTIVO: rol clientes-be.
+  const cancelSolicitudMatch = url.pathname.match(/^\/api\/solicitudes\/([^/]+)\/cancelar$/);
+  if (req.method === 'PATCH' && cancelSolicitudMatch) {
+    try {
+      const auth = await requireRole(req, 'clientes-be');
+      if (auth.error) return json(res, auth.error, { error: auth.error === 403 ? 'Se requiere el rol clientes-be.' : 'Autenticación requerida o configuración de Keycloak incorrecta.' });
+      const solicitudId = decodeURIComponent(cancelSolicitudMatch[1]);
+      const solicitudes = await apiRequest('/solicitudes');
+      const propia = solicitudes.find(row => (row.solicitudId || row.idSolicitud) === solicitudId);
+      if (!propia) return json(res, 404, { error: 'Solicitud no encontrada.' });
+      if ((propia.clienteId || propia.idCliente) !== auth.email) return json(res, 403, { error: 'Solo podés cancelar tus propios viajes.' });
+      const result = await apiRequest(`/solicitudes/${encodeURIComponent(solicitudId)}/cancelar`, { method: 'PATCH' });
+      return json(res, 200, { solicitud: { ...mapDbToUi(result), clienteNombre: auth.nombre || auth.username || 'Cliente' } });
+    } catch (error) {
+      return json(res, error.statusCode || 502, { error: error.message || 'No se pudo cancelar el viaje.' });
     }
   }
 

@@ -1,4 +1,8 @@
 (() => {
+  if (sessionStorage.getItem("viajeActivo")) {
+    location.replace("/viaje-activo.html");
+    return;
+  }
   const initialCenter = [-27.451, -58.986];
 
   let vehicle = "AUTO";
@@ -11,41 +15,24 @@
   const $ = (id) => document.getElementById(id);
 
   async function cargarDatosUsuario() {
-  try {
-    // Esperar a que Keycloak termine de autenticar al usuario.
-    await window.authReady;
+    try {
+      await window.authReady;
+      const claims = window.keycloak?.tokenParsed || {};
+      const nombreCompleto = [claims.given_name, claims.family_name]
+        .filter(Boolean).join(" ").trim();
+      const nombre = nombreCompleto || claims.name || claims.preferred_username || claims.email || "Cliente";
+      const nameElement = $("client-name");
+      const avatarElement = $("client-avatar");
+      if (!nameElement || !avatarElement) return;
 
-    // Obtener los datos del perfil guardados en Keycloak.
-    const perfil = await window.keycloak.loadUserProfile();
-
-    // Priorizar nombre y apellido.
-    const nombreCompleto = [
-      perfil.firstName,
-      perfil.lastName
-    ].filter(Boolean).join(" ").trim();
-
-    // Si no hay nombre y apellido, utilizar el nombre de usuario.
-    const nombre = nombreCompleto ||
-      perfil.username ||
-      window.keycloak.tokenParsed?.preferred_username ||
-      "Cliente";
-
-    $("client-name").textContent = nombre;
-
-    // Generar las iniciales para el avatar.
-    const iniciales = nombre
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map(palabra => palabra[0].toUpperCase())
-      .join("");
-
-    $("client-avatar").textContent = iniciales || "CL";
-
-  } catch (error) {
-    console.error("Error al cargar el perfil del usuario:", error);
-    $("client-name").textContent = "Cliente";
-  }
+      nameElement.textContent = nombre;
+      avatarElement.textContent = nombre.split(/\s+/).filter(Boolean).slice(0, 2)
+        .map(palabra => palabra[0].toUpperCase()).join("") || "CL";
+    } catch (error) {
+      console.error("Error al cargar los datos del usuario:", error);
+      const nameElement = $("client-name");
+      if (nameElement) nameElement.textContent = "Cliente";
+    }
 }
 
 // Cargar los datos de la cuenta activa.
@@ -198,15 +185,10 @@ cargarDatosUsuario();
       }
 
       const solicitud = data.solicitud || data;
-
-      showFeedback(
-        `Solicitud guardada en la base de datos. ID: ${solicitud.solicitudId} · Estado: ${solicitud.estado}. Persistida en MySQL.`,
-        "success"
-      );
-
-      $("created-result").hidden = false;
-      $("created-result").textContent =
-        `Solicitud: ${solicitud.solicitudId} · Cliente: ${solicitud.clienteId} · Vehículo: ${solicitud.tipoVehiculo} · Estado: ${solicitud.estado}`;
+      solicitud.clienteNombre = solicitud.clienteNombre || $("client-name").textContent || "Cliente";
+      sessionStorage.setItem("viajeActivo", JSON.stringify(solicitud));
+      location.replace("/viaje-activo.html");
+      return;
 
     } catch (error) {
       console.error("Error al crear solicitud:", error);

@@ -2,6 +2,7 @@
 (() => {
   const pageRoles = {
     '/ventana-de-solicitud.html': 'clientes-be',
+    '/viaje-activo.html': 'clientes-be',
     '/solicitudes.html': 'solicitud-be'
   };
 
