@@ -10,6 +10,8 @@ const lista = [
   { conductorId: "c2", distanciaM: 250.5, tipoVehiculo: "AUTO" },
   { conductorId: "c3", distanciaM: 900, tipoVehiculo: "AUTO" },
 ];
+const reservar = (repo, solicitudId, ids, ronda = 1) =>
+  Promise.all(ids.map((conductorId) => repo.marcarReservado({ solicitudId, ronda, conductorId })));
 const nuevo = () => {
   const prisma = crearPrismaFalso();
   return { prisma, repo: crearRepositorioCandidatos(prisma, { reloj: () => AHORA }) };
@@ -21,23 +23,44 @@ describe("repositorio de candidatos (lista devuelta por M4)", () => {
     assert.deepEqual(await repo.guardar({ solicitudId: "s1", lista }), { guardados: 3 });
     assert.deepEqual(await repo.guardar({ solicitudId: "s1", lista }), { guardados: 0 });
     assert.equal(prisma.filasCandidatos.length, 3);
-    assert.deepEqual(prisma.filasCandidatos.map((f) => [f.conductorId, f.posicion, f.ronda, f.liberadoEn]), [
-      ["c1", 0, 1, null], ["c2", 1, 1, null], ["c3", 2, 1, null],
+    assert.deepEqual(prisma.filasCandidatos.map((f) => [f.conductorId, f.posicion, f.ronda, f.reservadoEn, f.liberadoEn]), [
+      ["c1", 0, 1, null, null], ["c2", 1, 1, null, null], ["c3", 2, 1, null, null],
     ]);
   });
 
-  test("pendientes: los que siguen reservados, en orden, sin el ganador", async () => {
+  test("marcarReservado es condicional: marca una sola vez y solo la fila de esa ronda", async () => {
+    const { prisma, repo } = nuevo();
+    await repo.guardar({ solicitudId: "s1", lista });
+    assert.deepEqual(await repo.marcarReservado({ solicitudId: "s1", conductorId: "c1" }), { marcados: 1 });
+    assert.deepEqual(await repo.marcarReservado({ solicitudId: "s1", conductorId: "c1" }), { marcados: 0 });
+    assert.deepEqual(await repo.marcarReservado({ solicitudId: "s1", ronda: 2, conductorId: "c1" }), { marcados: 0 });
+    assert.equal(prisma.filasCandidatos.find((f) => f.conductorId === "c1").reservadoEn.getTime(), AHORA.getTime());
+    assert.equal(prisma.filasCandidatos.find((f) => f.conductorId === "c2").reservadoEn, null);
+  });
+
+  test("pendientes: solo los que M5 reservó y siguen reservados, en orden, sin el ganador", async () => {
     const { repo } = nuevo();
     await repo.guardar({ solicitudId: "s1", lista });
     await repo.guardar({ solicitudId: "otra", lista });
+    await reservar(repo, "s1", ["c1", "c2", "c3"]);
+    await reservar(repo, "otra", ["c1", "c2", "c3"]);
     assert.deepEqual(await repo.pendientesDeLiberar({ solicitudId: "s1" }), ["c1", "c2", "c3"]);
     assert.deepEqual(await repo.pendientesDeLiberar({ solicitudId: "s1", exceptoConductorId: "c2" }), ["c1", "c3"]);
+  });
+
+  test("un candidato que M5 no reservó (conflicto en M4) nunca figura como pendiente de liberar", async () => {
+    const { repo } = nuevo();
+    await repo.guardar({ solicitudId: "s1", lista });
+    await reservar(repo, "s1", ["c1", "c3"]);
+    assert.deepEqual(await repo.pendientesDeLiberar({ solicitudId: "s1" }), ["c1", "c3"]);
   });
 
   test("marcarLiberados es condicional: no vuelve a marcar y no toca otras solicitudes", async () => {
     const { prisma, repo } = nuevo();
     await repo.guardar({ solicitudId: "s1", lista });
     await repo.guardar({ solicitudId: "otra", lista });
+    await reservar(repo, "s1", ["c1", "c2", "c3"]);
+    await reservar(repo, "otra", ["c1", "c2", "c3"]);
     assert.deepEqual(await repo.marcarLiberados({ solicitudId: "s1", conductorIds: ["c1", "c2"] }), { marcados: 2 });
     assert.deepEqual(await repo.marcarLiberados({ solicitudId: "s1", conductorIds: ["c1", "c3"] }), { marcados: 1 });
     assert.deepEqual(await repo.pendientesDeLiberar({ solicitudId: "s1" }), []);
@@ -49,8 +72,10 @@ describe("repositorio de candidatos (lista devuelta por M4)", () => {
   test("una segunda ronda (p. ej. si el conductor cancela) no pisa la primera", async () => {
     const { prisma, repo } = nuevo();
     await repo.guardar({ solicitudId: "s1", ronda: 1, lista });
+    await reservar(repo, "s1", ["c1", "c2", "c3"]);
     await repo.marcarLiberados({ solicitudId: "s1", conductorIds: ["c1", "c2", "c3"] });
     await repo.guardar({ solicitudId: "s1", ronda: 2, lista: [lista[0], { conductorId: "c9", distanciaM: 50, tipoVehiculo: "AUTO" }] });
+    await reservar(repo, "s1", ["c1", "c9"], 2);
     assert.equal(prisma.filasCandidatos.length, 5);
     assert.deepEqual(await repo.pendientesDeLiberar({ solicitudId: "s1" }), ["c1", "c9"], "c1 vuelve a estar reservado en la ronda 2");
   });

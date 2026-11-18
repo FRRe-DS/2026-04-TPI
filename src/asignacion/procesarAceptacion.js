@@ -150,13 +150,11 @@ async function procesarAceptacion({ ofertaId, conductorId }, deps) {
   await intentar("conductorAsignado", () =>
     deps.notificaciones.conductorAsignado({ solicitudId, conductorId, ofertaId })
   );
-  // M4 reserva a toda la lista: se libera a todos los que sigan reservados (con o sin oferta,
-  // menos al ganador y a los que ya salieron por rechazo o vencimiento).
+  // Se cierra la reserva temporal en M4 de todos los que sigan reservados (con o sin oferta, el
+  // ganador incluido; menos los que ya salieron por rechazo o vencimiento). Que el ganador pase a
+  // ocupado lo gestionan M3 y M4 entre ellos.
   await intentar("liberarConductores", () =>
-    liberarCandidatosPendientes(
-      { solicitudId, ganadorId: conductorId, conOferta: canceladas },
-      deps
-    )
+    liberarCandidatosPendientes({ solicitudId, conOferta: [{ conductorId }, ...canceladas] }, deps)
   );
 
   return {

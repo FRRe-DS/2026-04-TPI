@@ -26,12 +26,10 @@ describe("Aceptación simple", () => {
     assert.equal(m.estado.eventos.filter((e) => e.tipo === TipoEvento.ACEPTACION).length, 1);
     assert.equal(m.estado.eventos.filter((e) => e.tipo === TipoEvento.CANCELACION).length, 2);
 
-    // Avisos externos: M6 una vez, M4 libera a los 2 perdedores, Redis limpia las 3 ofertas.
+    // Avisos externos: M6 una vez, M4 libera a los 3 (el ganador también), Redis limpia las 3 ofertas.
     assert.equal(m.espias.conductorAsignado.length, 1);
-    assert.deepEqual(m.espias.liberados.map((l) => l.conductorId).sort(), ["cond-1", "cond-3"]);
+    assert.deepEqual(m.espias.liberados.map((l) => l.conductorId).sort(), ["cond-1", "cond-2", "cond-3"]);
     assert.equal(m.espias.cacheEliminado.length, 3);
-    // El ganador NO se libera en M4: la aceptación se da solo a M3.
-    assert.ok(!m.espias.liberados.some((l) => l.conductorId === "cond-2"));
   });
 
   test("oferta inexistente y conductor que no es el de la oferta", async () => {
@@ -123,7 +121,7 @@ describe("Idempotencia (RNF-09)", () => {
     assert.equal(otra.resultado, R.ASIGNADA);
     assert.equal(otra.repetida, true);
     assert.equal(m.espias.conductorAsignado.length, 1);
-    assert.equal(m.espias.liberados.length, 1);
+    assert.equal(m.espias.liberados.length, 2, "cond-1 (ganador) y cond-2, una sola vez cada uno");
   });
 
   test("un conductor que llega tarde recibe SOLICITUD_NO_DISPONIBLE / YA_ASIGNADA (no 'oferta vencida')", async () => {

@@ -10,6 +10,7 @@ function coincide(fila, where = {}) {
       if ("gt" in condicion && !(valor > condicion.gt)) return false;
       if ("lte" in condicion && !(valor <= condicion.lte)) return false;
       if ("in" in condicion && !condicion.in.includes(valor)) return false;
+      if ("not" in condicion && valor === condicion.not) return false;
       return true;
     }
     return valor === condicion;
@@ -23,7 +24,7 @@ function elegir(fila, select) {
 
 function crearPrismaFalso(ofertas = [], candidatos = []) {
   const filas = ofertas.map((o) => ({ respondidaEn: null, ...o }));
-  const filasCandidatos = candidatos.map((c) => ({ ronda: 1, liberadoEn: null, ...c }));
+  const filasCandidatos = candidatos.map((c) => ({ ronda: 1, reservadoEn: null, liberadoEn: null, ...c }));
   const llamadas = { transaccion: [] };
   const oferta = {
     async findUnique({ where, select }) {
@@ -54,7 +55,7 @@ function crearPrismaFalso(ofertas = [], candidatos = []) {
         );
         if (repetido && skipDuplicates) continue;
         if (repetido) throw new Error("clave duplicada");
-        filasCandidatos.push({ liberadoEn: null, ...d });
+        filasCandidatos.push({ reservadoEn: null, liberadoEn: null, ...d });
         creados += 1;
       }
       return { count: creados };

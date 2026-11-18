@@ -1,7 +1,9 @@
 // Puerto `candidatos` sobre Prisma: la lista que devolvió M4 para cada solicitud.
 //
-// M4 reserva a TODOS los conductores de la lista, así que hay que recordar a quiénes se devolvió y
-// quiénes ya salieron de la reserva (liberadoEn), para liberar solo a los que faltan al cerrar la solicitud.
+// M4 no reserva la lista: M5 reserva de a un conductor antes de ofertarle (reservadoEn). Hay que recordar
+// a quiénes se devolvió, a quiénes reservó M5 (reservadoEn) y quiénes ya salieron de la reserva
+// (liberadoEn), para liberar solo a los reservados que faltan al cerrar la solicitud. Liberar a uno que
+// M5 no reservó le sacaría el bloqueo a otra solicitud.
 //
 // NO se probó contra MySQL real (solo contra tests/soporte/prismaFalso.js). Los modelos están en
 // prisma/modelos-m5.prisma (Candidato) y hay que pegarlos en el schema de bd/.
@@ -29,11 +31,21 @@ function crearRepositorioCandidatos(prisma, { reloj = () => new Date() } = {}) {
       return { guardados: r.count };
     },
 
-    // Conductores de TODAS las rondas que siguen reservados en M4 (sin liberar), en orden de la lista.
+    // M4 aceptó reservar al conductor (bloqueo temporal). Condicional: marca una sola vez.
+    async marcarReservado({ solicitudId, ronda = 1, conductorId, ahora = reloj() }, tx) {
+      const r = await cliente(tx).candidato.updateMany({
+        where: { solicitudId, ronda, conductorId, reservadoEn: null },
+        data: { reservadoEn: ahora },
+      });
+      return { marcados: r.count };
+    },
+
+    // Conductores de TODAS las rondas que M5 reservó en M4 y siguen sin liberar, en orden de la lista.
     async pendientesDeLiberar({ solicitudId, exceptoConductorId }, tx) {
       const filas = await cliente(tx).candidato.findMany({
         where: {
           solicitudId,
+          reservadoEn: { not: null },
           liberadoEn: null,
           ...(exceptoConductorId ? { NOT: { conductorId: exceptoConductorId } } : {}),
         },

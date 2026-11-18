@@ -82,6 +82,7 @@ model Candidato {
   tipoVehiculo String
   posicion     Int
   obtenidoEn   DateTime  @default(now())
+  reservadoEn  DateTime?  // M4 aceptó el bloqueo temporal; solo a estos se los libera después
   liberadoEn   DateTime?
 
   @@id([solicitudId, ronda, conductorId])

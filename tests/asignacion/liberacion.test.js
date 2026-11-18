@@ -9,15 +9,15 @@ const logger = { error() {}, warn() {}, info() {} };
 const porConductor = (m) => Object.fromEntries(m.espias.liberados.map((l) => [l.conductorId, l]));
 const reservados = (m) => [...m.estado.candidatos.values()].filter((c) => !c.liberadoEn).map((c) => c.conductorId).sort();
 
-describe("M4 reserva a toda la lista: se libera a todos los que sigan reservados", () => {
-  test("al asignar: se libera a los perdedores CON oferta y a los que nunca la recibieron, menos al ganador", async () => {
+describe("M5 reserva en M4 de a uno: al cerrar se libera a todos los que sigan reservados", () => {
+  test("al asignar: se libera a todos, ganador incluido (M3 y M4 gestionan su estado de ocupado)", async () => {
     const m = escenarioConOfertas(2, { sinOferta: 2 });
     const r = await procesarAceptacion({ ofertaId: "of-1", conductorId: "cond-1" }, m.deps);
     assert.deepEqual(r.avisosFallidos, []);
 
     const libres = porConductor(m);
-    assert.deepEqual(Object.keys(libres).sort(), ["cond-2", "cond-extra-1", "cond-extra-2"]);
-    assert.deepEqual(reservados(m), ["cond-1"], "solo el ganador sigue sin liberar");
+    assert.deepEqual(Object.keys(libres).sort(), ["cond-1", "cond-2", "cond-extra-1", "cond-extra-2"]);
+    assert.deepEqual(reservados(m), [], "no queda nadie reservado");
   });
 
   test("el que ya salió por oferta_rechazada NO se libera otra vez al cerrar", async () => {
@@ -28,7 +28,7 @@ describe("M4 reserva a toda la lista: se libera a todos los que sigan reservados
     await procesarAceptacion({ ofertaId: "of-2", conductorId: "cond-2" }, m.deps);
     const veces = m.espias.liberados.filter((l) => l.conductorId === "cond-1").length;
     assert.equal(veces, 1, "cond-1 se liberó una sola vez");
-    assert.deepEqual(m.espias.liberados.map((l) => l.conductorId).sort(), ["cond-1", "cond-3", "cond-extra-1"]);
+    assert.deepEqual(m.espias.liberados.map((l) => l.conductorId).sort(), ["cond-1", "cond-2", "cond-3", "cond-extra-1"]);
   });
 
   test("el que ya salió por oferta_vencida tampoco se libera otra vez", async () => {
@@ -41,7 +41,7 @@ describe("M4 reserva a toda la lista: se libera a todos los que sigan reservados
 
     await procesarAceptacion({ ofertaId: "of-2", conductorId: "cond-2" }, m.deps);
     assert.equal(m.espias.liberados.filter((l) => l.conductorId === "cond-1").length, 1);
-    assert.deepEqual(m.espias.liberados.map((l) => l.conductorId).sort(), ["cond-1", "cond-3"]);
+    assert.deepEqual(m.espias.liberados.map((l) => l.conductorId).sort(), ["cond-1", "cond-2", "cond-3"]);
   });
 
   test("al cancelar el cliente: se libera a todos, haya o no ofertas pendientes", async () => {
@@ -81,7 +81,7 @@ describe("M4 reserva a toda la lista: se libera a todos los que sigan reservados
     const r = await procesarAceptacion({ ofertaId: "of-1", conductorId: "cond-1" }, m.deps);
     assert.equal(r.resultado, "asignada");
     assert.deepEqual(r.avisosFallidos, ["liberarConductores"]);
-    assert.deepEqual(reservados(m), ["cond-1", "cond-extra-2"]);
+    assert.deepEqual(reservados(m), ["cond-extra-2"]);
   });
 
   test("si M4 está caído no se marca a nadie como liberado", async () => {

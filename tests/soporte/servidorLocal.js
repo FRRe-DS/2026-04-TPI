@@ -49,7 +49,7 @@ function sembrar() {
   // La lista que "devolvió M4" (y que M4 reservó): los 3 con oferta + `CANDIDATOS` más que nunca reciben oferta.
   const sinOferta = Array.from({ length: Number(process.env.CANDIDATOS ?? 3) }, (_, i) => `cond-extra-${i + 1}`);
   for (const conductorId of [...OFERTAS.map((o) => o.conductorId), ...sinOferta]) {
-    mundo.estado.candidatos.set(`sol-1:${conductorId}`, { solicitudId: "sol-1", conductorId, liberadoEn: null });
+    mundo.estado.candidatos.set(`sol-1:${conductorId}`, { solicitudId: "sol-1", conductorId, reservadoEn: new Date(), liberadoEn: null });
   }
 }
 sembrar();

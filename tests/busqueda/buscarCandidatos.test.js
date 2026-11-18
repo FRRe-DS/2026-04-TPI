@@ -31,12 +31,11 @@ const buscador = (cliente, extra = {}) =>
   crearBuscadorCandidatos({ clienteM4: cliente, dormir: async () => {}, ...extra });
 
 describe("Búsqueda de candidatos (contrato M4)", () => {
-  test("le manda a M4 solicitud_id y las cuatro coordenadas, en snake_case y como números", async () => {
+  test("le manda a M4 solo las cuatro coordenadas, en snake_case y como números (sin solicitud_id)", async () => {
     const m4 = clienteFalso([{ candidatos: [] }]);
     await buscador(m4).buscar(solicitud);
     assert.deepEqual(m4.llamadas, [
       {
-        solicitud_id: solicitud.solicitudId,
         origen_latitud: -27.45,
         origen_longitud: -58.98,
         destino_latitud: -27.47,
@@ -48,7 +47,7 @@ describe("Búsqueda de candidatos (contrato M4)", () => {
   test("no manda radio ni límite ni exclusiones: eso lo decide M4", () => {
     const pedido = construirPedidoM4(solicitud);
     assert.deepEqual(Object.keys(pedido).sort(), [
-      "destino_latitud", "destino_longitud", "origen_latitud", "origen_longitud", "solicitud_id",
+      "destino_latitud", "destino_longitud", "origen_latitud", "origen_longitud",
     ]);
   });
 

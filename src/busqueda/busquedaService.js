@@ -1,7 +1,7 @@
 // Búsqueda de candidatos (RF-5.3) según el contrato con M4
 // (docs/contrato-interno-m5.md, sección 7.1).
 //
-//   M5 -> M4:  solicitud_id, origen_latitud, origen_longitud, destino_latitud, destino_longitud
+//   M5 -> M4:  origen_latitud, origen_longitud, destino_latitud, destino_longitud  (M4 no recibe solicitud_id)
 //   M4 -> M5:  candidatos[] con conductor_id, distancia_m, tipo_vehiculo
 //
 // Reglas del contrato que se cumplen acá:
@@ -43,7 +43,8 @@ function leerCoordenada(punto, nombre) {
   return { latitud, longitud };
 }
 
-// Cuerpo exacto que espera M4 (snake_case; los ids son string uuid).
+// Cuerpo exacto que espera M4 (snake_case, solo las cuatro coordenadas; M4 no pide solicitud_id).
+// El solicitudId igual se valida: M5 lo necesita para guardar la lista de candidatos.
 function construirPedidoM4(solicitud) {
   const solicitudId = solicitud?.solicitudId;
   if (typeof solicitudId !== "string" || solicitudId.length === 0) {
@@ -52,7 +53,6 @@ function construirPedidoM4(solicitud) {
   const origen = leerCoordenada(solicitud.origen, "origen");
   const destino = leerCoordenada(solicitud.destino, "destino");
   return {
-    solicitud_id: solicitudId,
     origen_latitud: origen.latitud,
     origen_longitud: origen.longitud,
     destino_latitud: destino.latitud,
@@ -61,7 +61,7 @@ function construirPedidoM4(solicitud) {
 }
 
 // Pide los candidatos y repite el intento si M4 falla. Devuelve el arreglo tal cual lo mandó M4.
-async function pedirCandidatos(clienteM4, pedido, { intentos, esperaMs, dormir, logger }) {
+async function pedirCandidatos(clienteM4, pedido, { intentos, esperaMs, dormir, logger, solicitudId }) {
   let ultimoError = null;
   for (let intento = 1; intento <= intentos; intento++) {
     try {
@@ -72,7 +72,7 @@ async function pedirCandidatos(clienteM4, pedido, { intentos, esperaMs, dormir, 
       return respuesta.candidatos;
     } catch (error) {
       ultimoError = error;
-      logger?.warn({ err: error, intento, solicitudId: pedido.solicitud_id }, "falló la búsqueda de candidatos en M4");
+      logger?.warn({ err: error, intento, solicitudId }, "falló la búsqueda de candidatos en M4");
       if (intento < intentos) await dormir(esperaMs * 2 ** (intento - 1));
     }
   }
@@ -106,7 +106,7 @@ function crearBuscadorCandidatos({ clienteM4, candidatos, intentos = 3, esperaMs
     // `ronda` es el número de búsqueda de esta solicitud (1 la primera; 2 si hay que volver a pedir la lista).
     async buscar(solicitud, { ronda = 1, ahora } = {}) {
       const pedido = construirPedidoM4(solicitud);
-      const crudos = await pedirCandidatos(clienteM4, pedido, { intentos, esperaMs, dormir, logger });
+      const crudos = await pedirCandidatos(clienteM4, pedido, { intentos, esperaMs, dormir, logger, solicitudId: solicitud.solicitudId });
       const tipo = solicitud.tipoVehiculo ?? solicitud.tipoVehiculoRequerido;
       const lista = ordenarCandidatosPorDistancia(normalizarCandidatos(crudos, tipo), "distanciaM");
       if (candidatos && lista.length > 0) {

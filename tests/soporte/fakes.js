@@ -21,15 +21,17 @@ function crearMundo({ solicitudes = [], ofertas = [], busquedas = [], candidatos
     solicitudes: new Map(solicitudes.map((s) => [s.solicitudId, { ...s }])),
     ofertas: new Map(ofertas.map((o) => [o.ofertaId, { ...o }])),
     busquedas: new Map(busquedas.map((b) => [b.solicitudId, { ...b }])),
-    // Lista que devolvió M4 (reservada en M4). Clave: solicitud + conductor.
-    candidatos: new Map(candidatos.map((c) => [`${c.solicitudId}:${c.conductorId}`, { liberadoEn: null, ...c }])),
+    // Lista que devolvió M4. Los que se pasan acá se dan por reservados por M5 (reservadoEn). Clave: solicitud + conductor.
+    candidatos: new Map(candidatos.map((c) => [`${c.solicitudId}:${c.conductorId}`, { reservadoEn: ahora, liberadoEn: null, ...c }])),
     eventos: [],
   };
   const espias = {
     cacheEliminado: [],
     conductorAsignado: [],
     liberados: [],
-    fallar: { cache: false, conductorAsignado: false, liberar: false, liberarIds: [] },
+    reservados: [],
+    fallar: { cache: false, conductorAsignado: false, liberar: false, liberarIds: [], reservarIds: [] },
+    conflictos: [],
   };
   let reloj = ahora;
 
@@ -185,12 +187,17 @@ function crearMundo({ solicitudes = [], ofertas = [], busquedas = [], candidatos
     async guardar({ solicitudId, lista }) {
       for (const c of lista) {
         const clave = `${solicitudId}:${c.conductorId}`;
-        if (!estado.candidatos.has(clave)) estado.candidatos.set(clave, { solicitudId, conductorId: c.conductorId, liberadoEn: null });
+        if (!estado.candidatos.has(clave)) estado.candidatos.set(clave, { solicitudId, conductorId: c.conductorId, reservadoEn: null, liberadoEn: null });
       }
+    },
+    async marcarReservado({ solicitudId, conductorId, ahora }) {
+      const c = estado.candidatos.get(`${solicitudId}:${conductorId}`);
+      if (c && !c.reservadoEn) { c.reservadoEn = ahora ?? reloj; return { marcados: 1 }; }
+      return { marcados: 0 };
     },
     async pendientesDeLiberar({ solicitudId, exceptoConductorId }) {
       return [...estado.candidatos.values()]
-        .filter((c) => c.solicitudId === solicitudId && !c.liberadoEn && c.conductorId !== exceptoConductorId)
+        .filter((c) => c.solicitudId === solicitudId && c.reservadoEn && !c.liberadoEn && c.conductorId !== exceptoConductorId)
         .map((c) => c.conductorId);
     },
     async marcarLiberados({ solicitudId, conductorIds, ahora }) {
@@ -217,6 +224,13 @@ function crearMundo({ solicitudes = [], ofertas = [], busquedas = [], candidatos
     },
   };
   const notificaciones = {
+    // Como el real: true = reservado, false = conflicto (409); otro fallo se lanza.
+    async reservarConductor({ solicitudId, conductorId }) {
+      if (espias.fallar.reservarIds.includes(conductorId)) throw new Error("M4 caído");
+      if (espias.conflictos.includes(conductorId)) return false;
+      espias.reservados.push({ solicitudId, conductorId });
+      return true;
+    },
     async conductorAsignado(datos) {
       if (espias.fallar.conductorAsignado) throw new Error("M6 caído");
       espias.conductorAsignado.push(datos);

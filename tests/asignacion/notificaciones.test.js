@@ -7,6 +7,7 @@ describe("Avisos a M3, M4 y M6", () => {
   const rutas = {
     m3EnviarOfertas: ({ solicitudId }) => `/m3/ofertas/${solicitudId}`,
     m6ConductorAsignado: ({ solicitudId }) => `/m6/${solicitudId}`,
+    m4ReservarConductor: ({ conductorId }) => `/m4/reserva/${conductorId}`,
     m4LiberarConductor: ({ conductorId }) => `/m4/${conductorId}`,
   };
   const vacio = { post: async () => {} };
@@ -24,7 +25,7 @@ describe("Avisos a M3, M4 y M6", () => {
     ]);
   });
 
-  test("hacia M4 solo viaja el conductor y la solicitud: el mismo aviso para todos, sin motivo", async () => {
+  test("hacia M4 solo viaja el conductor, de a uno: el mismo aviso para todos, sin motivo ni solicitud", async () => {
     const llamadas = [];
     const n = crear({ clienteM4: { post: async (ruta, cuerpo) => { llamadas.push(cuerpo); } } });
     const liberados = await n.liberarConductores([
@@ -33,9 +34,28 @@ describe("Avisos a M3, M4 y M6", () => {
     ]);
     assert.deepEqual(liberados, ["c2", "c5"]);
     assert.deepEqual(llamadas, [
-      { conductor_id: "c2", solicitud_id: "s1" },
-      { conductor_id: "c5", solicitud_id: "s1" },
+      { conductor_id: "c2" },
+      { conductor_id: "c5" },
     ]);
+  });
+
+  describe("reserva de un conductor en M4 (antes de ofertarle)", () => {
+    test("hacia M4 viaja solo el conductor, con una clave de idempotencia estable", async () => {
+      const llamadas = [];
+      const n = crear({ clienteM4: { post: async (ruta, cuerpo, op) => { llamadas.push({ ruta, cuerpo, clave: op.claveIdempotencia }); } } });
+      assert.equal(await n.reservarConductor({ solicitudId: "s1", conductorId: "c1" }), true);
+      assert.deepEqual(llamadas, [{ ruta: "/m4/reserva/c1", cuerpo: { conductor_id: "c1" }, clave: "reservar:s1:c1" }]);
+    });
+
+    test("409 de M4 (otra solicitud lo reservó antes) = no reservado, sin lanzar error", async () => {
+      const n = crear({ clienteM4: { post: async () => { throw Object.assign(new Error("Respuesta 409"), { estado: 409 }); } } });
+      assert.equal(await n.reservarConductor({ solicitudId: "s1", conductorId: "c1" }), false);
+    });
+
+    test("cualquier otro error de M4 se lanza (quien llama decide)", async () => {
+      const n = crear({ clienteM4: { post: async () => { throw Object.assign(new Error("Respuesta 503"), { estado: 503 }); } } });
+      await assert.rejects(() => n.reservarConductor({ solicitudId: "s1", conductorId: "c1" }), /503/);
+    });
   });
 
   test("a M4 no se le avisa la aceptación del conductor (se da solo a M3)", () => {

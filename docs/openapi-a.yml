@@ -14,9 +14,12 @@ info:
     2. El cliente confirma el viaje inmediato o M9 activa una reserva. M5 crea
        la solicitud en `PENDIENTE` y pasa a `BUSCANDO` al iniciar el despacho.
     3. M5 consulta `GET /conductores/cercanos` de M4 con el origen y el tipo de
-       vehículo. M4 decide el radio. M5 selecciona candidatos compatibles y
-       habilitados y pide a M4 un bloqueo `RESERVADO` por cada conductor que
-       vaya a recibir una oferta. Solo oferta a los conductores que logró reservar.
+       vehículo. M4 decide el radio y devuelve la lista ordenada del más cercano
+       al más lejano. La búsqueda no reserva a nadie. M5 selecciona candidatos
+       compatibles y habilitados y pide a M4 el bloqueo temporal de a un conductor
+       por vez, en ese orden, antes de mandarle la oferta. Si M4 informa un
+       conflicto (409) porque otra solicitud lo reservó antes, M5 pasa al siguiente.
+       Solo oferta a los conductores que logró reservar.
     4. M5 entrega a M3 un lote de ofertas por solicitud con vencimiento de 30
        segundos. Si hay un error o timeout de entrega, reintenta con los mismos
        identificadores y vencimiento mientras el lote siga vigente.
@@ -24,12 +27,15 @@ info:
        deja la oferta `ACEPTADA` y la solicitud `ASIGNADA`. Un rechazo cierra
        esa oferta y la solicitud sigue `BUSCANDO` mientras queden ofertas vigentes.
        Cuando se agota la búsqueda sin ganador, la solicitud queda `SIN_DISPONIBILIDAD`.
-    6. M5 comunica a M4 una resolución por conductor reservado. Usa
-       `OFERTA_ACEPTADA` para el ganador y `OFERTA_RECHAZADA` para cerrar
-       los bloqueos sin asignación, incluidos los vencimientos y las cancelaciones.
-       M4 libera la reserva y, para el ganador, avisa a M3 que pase al conductor
-       a no disponible. El TTL de M4 de 10 minutos funciona como respaldo ante
-       fallos y es independiente del plazo de oferta y del plazo global de búsqueda de M5.
+    6. M5 libera a cada conductor reservado en M4 una sola vez, con un aviso por
+       conductor y el mismo mensaje para todos, sin indicar el motivo. Libera de a
+       uno cuando el conductor rechaza o se le vence la oferta, y a todos los que
+       sigan reservados, el ganador incluido, cuando la solicitud se cierra por
+       asignación, búsqueda agotada o cancelación del cliente. M5 no avisa a M4 la
+       aceptación ni pide confirmación de la liberación. El cambio del conductor de
+       libre a ocupado lo gestionan M3 y M4 entre ellos. El TTL de M4 de 10 minutos
+       funciona como respaldo ante fallos y es independiente del plazo de oferta y
+       del plazo global de búsqueda de M5.
 
     ### Otras integraciones
 
@@ -277,7 +283,8 @@ paths:
         RF-5.7. El cliente titular puede cancelar mientras la solicitud esté
         BUSCANDO. M5 resuelve de forma atómica la carrera entre cancelación y
         aceptación. Si se registra la cancelación, cierra la búsqueda,
-        cancela las ofertas pendientes y comunica su resolución a M4. Un
+        cancela las ofertas pendientes y libera en M4 a los conductores
+        reservados. Un
         reintento de la cancelación devuelve la misma solicitud CANCELADA.
         M6 gestiona la cancelación después de la asignación.
       requestBody:
@@ -377,12 +384,12 @@ paths:
         respuesta se registra mientras la oferta esté PENDIENTE, dentro
         de su vigencia y con la solicitud BUSCANDO. Una aceptación da 200
         si esa oferta gana la asignación única de la solicitud. El rechazo
-        registrado también da 200 y permite cerrar el bloqueo de ese conductor.
+        registrado también da 200 y M5 libera a ese conductor en M4.
 
         M5 reconoce primero la repetición de una respuesta ya registrada. Para
         las demás respuestas evalúa el conflicto de solicitud (409) antes
         de la vigencia de la oferta (410). Si pasa vence_en sin respuesta,
-        M5 marca VENCIDA la oferta y comunica el cierre a M4.
+        M5 marca VENCIDA la oferta y libera al conductor en M4.
       requestBody:
         required: true
         content:
@@ -519,10 +526,13 @@ x-integraciones:
       metodo: GET
       ruta: /conductores/cercanos
       descripcion: |
-        RF-5.3. Consulta de solo lectura. M4 recibe las coordenadas del origen y el
-        tipo de vehículo en la URL y decide el radio. Una lista vacía indica
-        ausencia de candidatos. Ante error o timeout, M5 registra
-        ERROR_INTEGRACION y reintenta de forma acotada dentro del plazo
+        RF-5.3. Consulta de solo lectura que no reserva a nadie. M4 recibe las
+        coordenadas del origen y el tipo de vehículo en la URL, sin las del destino,
+        y decide el radio: arranca en 5 km y lo amplía a 6,5, 8 y 9,5 km. Devuelve
+        los candidatos ordenados de menor a mayor distancia al origen. Si al llegar
+        al radio máximo no hay conductores, responde 200 con la lista vacía. Un
+        error o un timeout nunca equivale a una lista vacía: M5 registra
+        ERROR_INTEGRACION y repite la búsqueda de forma acotada dentro del plazo
         de búsqueda.
         Los nombres de parámetros que se muestran aquí se deben cotejar con
         el OpenAPI de M4.
@@ -535,15 +545,33 @@ x-integraciones:
       metodo: POST
       ruta: /reserva
       descripcion: |
-        M5 solicita el bloqueo atómico de un conductor elegido con RESERVADO
-        antes de ofertarle. Al cerrarse su oferta, M5 comunica el resultado
-        a M4. La aceptación ganadora produce OFERTA_ACEPTADA. El rechazo,
-        vencimiento, cancelación, cierre por otra oferta ganadora o
-        agotamiento de la búsqueda produce OFERTA_RECHAZADA. Los datos
-        de abajo describen el intercambio.
-        La ruta base y la ubicación del conductor_id se cotejan con M4.
+        M5 pide a M4 el bloqueo temporal de un solo conductor, antes de mandarle
+        la oferta por M3, siguiendo el orden de cercanía de la lista. M4 no bloquea
+        la lista completa que devuelve. La reserva es una operación indivisible:
+        si otra solicitud concurrente ya reservó al conductor, M4 responde 409 y
+        M5 pasa al siguiente candidato. Solo se ofrece a quienes quedaron
+        reservados, y solo a ellos se los libera después. Si M5 no logra enviar
+        la liberación, la reserva expira sola a los 10 minutos (TTL de M4).
+        La ruta y la ubicación del conductor_id se cotejan con M4.
       datos:
         $ref: '#/components/schemas/ReservaConductorM4'
+    liberar_conductor:
+      direccion: M5 a M4
+      metodo: POST
+      ruta: a acordar con M4
+      descripcion: |
+        Una llamada por conductor, con el mismo mensaje para todos: solo el
+        conductor_id, sin motivo, sin oferta_id y sin solicitud_id. M5 libera a
+        cada conductor una sola vez. De a uno cuando rechaza la oferta o se le
+        vence el plazo de respuesta, y a todos los que sigan reservados, el
+        ganador incluido, cuando un conductor acepta, vence el tiempo máximo de
+        búsqueda o el cliente cancela. La aceptación del conductor no se avisa a
+        M4: se da solo a M3, y el paso del conductor de libre a ocupado lo gestionan
+        M3 y M4 entre ellos. M5 no pide confirmación: solo comprueba que el
+        transporte responda con 2xx y, si falla, reintenta con la misma clave de
+        idempotencia. Repetir la liberación no debe tener efectos adicionales.
+      datos:
+        $ref: '#/components/schemas/LiberacionConductorM4'
   M7:
     fuente: Propuesta de contrato a M7.md
     estimacion:
@@ -1034,14 +1062,19 @@ components:
                 minLength: 1
     ReservaConductorM4:
       type: object
-      required: [conductor_id, estado]
+      additionalProperties: false
+      required: [conductor_id]
       properties:
         conductor_id:
           $ref: '#/components/schemas/Identificador'
-        estado:
-          type: string
-          enum: [RESERVADO, OFERTA_ACEPTADA, OFERTA_RECHAZADA]
-          description: Estado comunicado a M4 para bloquear o resolver la reserva temporal.
+    LiberacionConductorM4:
+      description: El mismo mensaje para todos los conductores, sin importar la razón de la liberación.
+      type: object
+      additionalProperties: false
+      required: [conductor_id]
+      properties:
+        conductor_id:
+          $ref: '#/components/schemas/Identificador'
     CancelacionRequest:
       type: object
       additionalProperties: false

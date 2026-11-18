@@ -1,10 +1,12 @@
 // Liberación de conductores en M4 (contrato: docs/contrato-interno-m5.md, sección 7).
 //
-// M4 reserva a TODOS los conductores que devuelve en la lista. Un conductor sale de la reserva por
-// una de estas vías, y NUNCA se libera dos veces:
+// M5 reserva en M4 de a un conductor antes de ofertarle (src/asignacion/reserva.js). Solo se libera a los
+// que M5 reservó. Un conductor sale de la reserva por una de estas vías, y NUNCA se libera dos veces:
 //   - oferta_rechazada / oferta_vencida: apenas ocurre (src/respuesta).
-//   - al cerrar la solicitud (otro ganó, cancelación del cliente, búsqueda agotada): se libera a TODOS
-//     los de la lista que no hayan salido ya, con o sin oferta, menos al ganador.
+//   - al cerrar la solicitud (asignación, cancelación del cliente, búsqueda agotada): se libera a TODOS
+//     los reservados que no hayan salido ya, con o sin oferta, INCLUIDO el ganador: el cambio de libre a
+//     ocupado del conductor lo gestionan M3 y M4 entre ellos, M5 solo cierra la reserva temporal.
+//   - la razón no se informa: M4 recibe el mismo aviso siempre.
 //
 // Para saber quién ya salió se usa el puerto `candidatos` (liberadoEn). Se marca DESPUÉS de que M4
 // confirma, así un fallo de M4 deja al conductor pendiente en vez de darlo por liberado.
@@ -29,16 +31,12 @@ async function liberarYMarcar({ solicitudId, items }, deps) {
   if (errorLiberacion) throw errorLiberacion;
 }
 
-// Al cerrar la solicitud: libera a todos los candidatos que sigan reservados, menos al ganador.
+// Al cerrar la solicitud: libera a todos los candidatos reservados por M5 que sigan sin liberar (también al ganador).
 // `conOferta` son las ofertas que se acaban de cancelar ([{ conductorId, ofertaId }]); se incluyen
 // aunque la lista no se hubiera guardado.
-async function liberarCandidatosPendientes({ solicitudId, ganadorId, conOferta = [] }, deps) {
-  const pendientes = await deps.candidatos.pendientesDeLiberar({
-    solicitudId,
-    ...(ganadorId ? { exceptoConductorId: ganadorId } : {}),
-  });
+async function liberarCandidatosPendientes({ solicitudId, conOferta = [] }, deps) {
+  const pendientes = await deps.candidatos.pendientesDeLiberar({ solicitudId });
   const conductores = new Set([...pendientes, ...conOferta.map((c) => c.conductorId)]);
-  if (ganadorId) conductores.delete(ganadorId);
   const items = [...conductores].map((conductorId) => ({ solicitudId, conductorId }));
   await liberarYMarcar({ solicitudId, items }, deps);
   return items.map((i) => i.conductorId);

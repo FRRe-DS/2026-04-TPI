@@ -4,9 +4,16 @@
 //
 // Hacia M3 y M4 el cuerpo va en snake_case; el resto del código trabaja en camelCase y la traducción
 // se hace SOLO acá.
-//   Liberar conductor   { conductor_id, solicitud_id }
-//                       Es el mismo aviso para todos: M4 no recibe el motivo de la liberación.
-// La aceptación de un conductor NO se le avisa a M4 (se da solo a M3).
+//   Reservar conductor  { conductor_id }
+//                       Bloqueo temporal en M4, de a UN conductor por llamada y ANTES de mandarle la
+//                       oferta por M3. Si otra solicitud lo reservó un instante antes, M4 responde 409
+//                       y se pasa al siguiente de la lista.
+//   Liberar conductor   { conductor_id }
+//                       Es el mismo aviso para todos, sin importar la razón, de a un conductor por
+//                       llamada: M4 no recibe el motivo ni la solicitud.
+// A M4 no se le avisa la aceptación del conductor (eso es solo con M3), pero al cerrar la solicitud se
+// libera la reserva temporal de todos, también la del ganador: pasar al conductor de libre a ocupado
+// lo gestionan M3 y M4 entre ellos.
 //
 // Contrato con M3 (envío de ofertas): una llamada por solicitud con todas las ofertas.
 //   Enviar ofertas      { solicitud_id, ofertas: [{ oferta_id, conductor_id }],
@@ -19,13 +26,14 @@
 //
 //   rutas.m3EnviarOfertas({ solicitudId })                  -> string
 //   rutas.m6ConductorAsignado({ solicitudId })              -> string
+//   rutas.m4ReservarConductor({ conductorId, solicitudId }) -> string
 //   rutas.m4LiberarConductor({ conductorId, solicitudId })  -> string
 
 const { createHash } = require("node:crypto");
 
 function crearNotificaciones({ clienteM3, clienteM4, clienteM6, rutas, logger }) {
   if (!clienteM3 || !clienteM4 || !clienteM6) throw new Error("Faltan clienteM3, clienteM4 y/o clienteM6");
-  const requeridas = ["m3EnviarOfertas", "m6ConductorAsignado", "m4LiberarConductor"];
+  const requeridas = ["m3EnviarOfertas", "m6ConductorAsignado", "m4ReservarConductor", "m4LiberarConductor"];
   if (requeridas.some((nombre) => typeof rutas?.[nombre] !== "function")) {
     throw new Error("Faltan las rutas acordadas con M3, M4 y M6");
   }
@@ -53,6 +61,23 @@ function crearNotificaciones({ clienteM3, clienteM4, clienteM6, rutas, logger })
       );
     },
 
+    // M4: bloqueo temporal de UN conductor, antes de ofertarle. Devuelve true si quedó reservado y
+    // false si M4 informa conflicto (409: otra solicitud lo reservó antes). Cualquier otro error se
+    // lanza: quien llama decide si salta al siguiente candidato (el TTL de M4 cubre el caso dudoso).
+    async reservarConductor({ solicitudId, conductorId }) {
+      try {
+        await clienteM4.post(
+          rutas.m4ReservarConductor({ conductorId, solicitudId }),
+          { conductor_id: conductorId },
+          { claveIdempotencia: `reservar:${solicitudId}:${conductorId}` }
+        );
+        return true;
+      } catch (error) {
+        if (error?.estado === 409) return false;
+        throw error;
+      }
+    },
+
     async conductorAsignado({ solicitudId, conductorId, ofertaId }) {
       await clienteM6.post(
         rutas.m6ConductorAsignado({ solicitudId }),
@@ -68,7 +93,7 @@ function crearNotificaciones({ clienteM3, clienteM4, clienteM6, rutas, logger })
         lista.map(async (item) => {
           await clienteM4.post(
             rutas.m4LiberarConductor({ conductorId: item.conductorId, solicitudId: item.solicitudId }),
-            { conductor_id: item.conductorId, solicitud_id: item.solicitudId },
+            { conductor_id: item.conductorId },
             { claveIdempotencia: `liberar:${item.solicitudId}:${item.conductorId}` }
           );
           return item.conductorId;

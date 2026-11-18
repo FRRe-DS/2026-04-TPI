@@ -39,11 +39,13 @@
 // busquedas.cerrar({ solicitudId, estado }, tx)
 //     Condicional: solo si estaba ACTIVA. -> boolean (true si la cerró)
 //
-// candidatos (lista que devolvió M4 para la solicitud; M4 reserva a toda la lista)
+// candidatos (lista que devolvió M4 para la solicitud; M5 reserva en M4 de a un conductor, antes de ofertarle)
 // candidatos.guardar({ solicitudId, ronda, lista: [{ conductorId, distanciaM, tipoVehiculo }], ahora }, tx?)
 //     Idempotente: repetir la misma (solicitudId, ronda, conductorId) no duplica.        (src/busqueda)
+// candidatos.marcarReservado({ solicitudId, ronda?, conductorId, ahora }, tx?)       (src/asignacion/reserva.js)
+//     Condicional: solo si todavía no estaba marcado. -> { marcados: number }
 // candidatos.pendientesDeLiberar({ solicitudId, exceptoConductorId? }, tx?)
-//     -> [conductorId]  de TODAS las rondas, los que todavía no se liberaron en M4.
+//     -> [conductorId]  de TODAS las rondas, los reservados por M5 que todavía no se liberaron en M4.
 // candidatos.marcarLiberados({ solicitudId, conductorIds, ahora }, tx?)
 //     Condicional: solo los que seguían sin liberar. -> { marcados: number }
 //
@@ -52,6 +54,7 @@
 //     Confirma si la función termina; deshace y relanza el error si lanza.
 // cacheOfertas.eliminar([ofertaId, ...])                       (Redis, RNF-11)
 // notificaciones.conductorAsignado({ solicitudId, conductorId, ofertaId })   (M6)
+// notificaciones.reservarConductor({ solicitudId, conductorId }) -> boolean  (M4: true reservado, false si hubo conflicto 409)
 // notificaciones.liberarConductores([{ solicitudId, conductorId }])  (M4: el mismo aviso "liberado" para todos, sin motivo)
 // reloj() -> Date           (opcional; para poder probar vencimientos)
 // logger                    (opcional)
