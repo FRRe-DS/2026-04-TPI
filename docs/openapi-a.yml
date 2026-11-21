@@ -12,7 +12,7 @@ info:
     1. El cliente puede pedir una tarifa orientativa. M5 obtiene la distancia y la
        duración del trayecto de M4 y solicita a M7 el importe para mostrar.
     2. El cliente confirma el viaje inmediato o M9 activa una reserva. M5 crea
-       la solicitud en `PENDIENTE` y pasa a `BUSCANDO` al iniciar el despacho.
+       la solicitud en `pendiente` y pasa a `buscando` al iniciar el despacho.
     3. M5 consulta `GET /conductores/cercanos` de M4 con el origen y el tipo de
        vehículo. M4 decide el radio y devuelve la lista ordenada del más cercano
        al más lejano. La búsqueda no reserva a nadie. M5 selecciona candidatos
@@ -24,9 +24,9 @@ info:
        segundos. Si hay un error o timeout de entrega, reintenta con los mismos
        identificadores y vencimiento mientras el lote siga vigente.
     5. M3 remite la respuesta del conductor a M5. Una única aceptación ganadora
-       deja la oferta `ACEPTADA` y la solicitud `ASIGNADA`. Un rechazo cierra
-       esa oferta y la solicitud sigue `BUSCANDO` mientras queden ofertas vigentes.
-       Cuando se agota la búsqueda sin ganador, la solicitud queda `SIN_DISPONIBILIDAD`.
+       deja la oferta `aceptada` y la solicitud `asignada`. Un rechazo cierra
+       esa oferta y la solicitud sigue `buscando` mientras queden ofertas vigentes.
+       Cuando se agota la búsqueda sin ganador, la solicitud queda `sin_disponibilidad`.
     6. M5 libera a cada conductor reservado en M4 una sola vez, con un aviso por
        conductor y el mismo mensaje para todos, sin indicar el motivo. Libera de a
        uno cuando el conductor rechaza o se le vence la oferta, y a todos los que
@@ -53,7 +53,7 @@ info:
     - **M6** recibe `POST /trips` después de la asignación. M5 usa
       `solicitud_id` como `requestId` estable para reintentar el alta del viaje
       y mapea `AUTO` y `MOTO` a `CAR` y `MOTORCYCLE`. La solicitud queda
-      `ASIGNADA` mientras M6 gestiona `PENDING_ARRIVAL`, `DRIVER_ARRIVED`,
+      `asignada` mientras M6 gestiona `PENDING_ARRIVAL`, `DRIVER_ARRIVED`,
       `IN_PROGRESS`, `COMPLETED` o `CANCELLED`. El redespacho ante
       `requiresRedispatch: true` queda como propuesta fuera de esta versión.
     - **M8** consume eventos de M5 para notificar hitos de solicitud,
@@ -132,8 +132,8 @@ paths:
         RF-5.1. M5 obtiene el cliente_id del sub del JWT del cliente. Si el
         cuerpo incluye cliente_id, debe coincidir con ese UUID o M5 devuelve
         403. Para un alta nueva, M5 consulta el estado en M2 con su JWT de
-        servicio. Si el estado es ACTIVO, registra la solicitud en PENDIENTE
-        y la pasa a BUSCANDO al iniciar el despacho.
+        servicio. Si el estado es ACTIVO, registra la solicitud en pendiente
+        y la pasa a buscando al iniciar el despacho.
       security:
         - bearerAuth: [CLIENTE]
       parameters:
@@ -205,7 +205,7 @@ paths:
               tipo_vehiculo: AUTO
       responses:
         '201':
-          description: Solicitud registrada en PENDIENTE para la reserva.
+          description: Solicitud registrada en pendiente para la reserva.
           headers:
             Location:
               $ref: '#/components/headers/SolicitudLocation'
@@ -218,11 +218,11 @@ paths:
                     properties:
                       estado:
                         type: string
-                        enum: [PENDIENTE]
+                        enum: [pendiente]
               example:
                 reserva_id: 81d60c84-d9aa-4f34-9f97-a50a264d2154
                 solicitud_id: 129959d4-8c0a-44b3-a7d5-85971d487cd4
-                estado: PENDIENTE
+                estado: pendiente
         '200':
           description: Reserva ya activada. Devuelve el identificador y el estado actual de la solicitud.
           content:
@@ -232,7 +232,7 @@ paths:
               example:
                 reserva_id: 81d60c84-d9aa-4f34-9f97-a50a264d2154
                 solicitud_id: 129959d4-8c0a-44b3-a7d5-85971d487cd4
-                estado: BUSCANDO
+                estado: buscando
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -256,7 +256,7 @@ paths:
       description: |
         RF-5.6 y RF-5.8. Acceso del cliente titular o de un operador o
         servicio autorizado. M9 puede consultar las solicitudes que activó
-        desde sus reservas. SIN_DISPONIBILIDAD indica que terminó la búsqueda
+        desde sus reservas. sin_disponibilidad indica que terminó la búsqueda
         sin asignación.
       responses:
         '200':
@@ -281,11 +281,11 @@ paths:
       summary: Cancelar una solicitud antes de la asignación
       description: |
         RF-5.7. El cliente titular puede cancelar mientras la solicitud esté
-        BUSCANDO. M5 resuelve de forma atómica la carrera entre cancelación y
+        buscando. M5 resuelve de forma atómica la carrera entre cancelación y
         aceptación. Si se registra la cancelación, cierra la búsqueda,
         cancela las ofertas pendientes y libera en M4 a los conductores
         reservados. Un
-        reintento de la cancelación devuelve la misma solicitud CANCELADA.
+        reintento de la cancelación devuelve la misma solicitud cancelada.
         M6 gestiona la cancelación después de la asignación.
       requestBody:
         content:
@@ -304,7 +304,7 @@ paths:
                     properties:
                       estado:
                         type: string
-                        enum: [CANCELADA]
+                        enum: [cancelada]
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -381,15 +381,15 @@ paths:
         RF-5.5 y RF-5.6. El servicio M3 autenticado envía una respuesta por
         conductor. M5 verifica el identificador de la ruta, la solicitud
         asociada y que el conductor sea el destinatario. La primera
-        respuesta se registra mientras la oferta esté PENDIENTE, dentro
-        de su vigencia y con la solicitud BUSCANDO. Una aceptación da 200
+        respuesta se registra mientras la oferta esté pendiente, dentro
+        de su vigencia y con la solicitud buscando. Una aceptación da 200
         si esa oferta gana la asignación única de la solicitud. El rechazo
         registrado también da 200 y M5 libera a ese conductor en M4.
 
         M5 reconoce primero la repetición de una respuesta ya registrada. Para
         las demás respuestas evalúa el conflicto de solicitud (409) antes
         de la vigencia de la oferta (410). Si pasa vence_en sin respuesta,
-        M5 marca VENCIDA la oferta y libera al conductor en M4.
+        M5 marca vencida la oferta y libera al conductor en M4.
       requestBody:
         required: true
         content:
@@ -649,7 +649,7 @@ components:
         format: uri-reference
   responses:
     SolicitudCreada:
-      description: Solicitud registrada en PENDIENTE.
+      description: Solicitud registrada en pendiente.
       headers:
         Location:
           $ref: '#/components/headers/SolicitudLocation'
@@ -662,7 +662,7 @@ components:
                 properties:
                   estado:
                     type: string
-                    enum: [PENDIENTE]
+                    enum: [pendiente]
     BadRequest:
       description: Datos de entrada inválidos.
       content:
@@ -858,26 +858,29 @@ components:
           description: Estado de la solicitud de despacho gestionada por M5.
     EstadoSolicitud:
       type: string
-      enum: [PENDIENTE, BUSCANDO, ASIGNADA, CANCELADA, SIN_DISPONIBILIDAD]
+      enum: [pendiente, buscando, asignada, cancelada, sin_disponibilidad]
       description: |
-        PENDIENTE es el estado de alta. BUSCANDO indica que comenzó el
-        despacho. La búsqueda termina en ASIGNADA si gana un conductor,
-        CANCELADA si cancela el cliente o SIN_DISPONIBILIDAD si se agota sin
+        Los valores van en snake_case minúscula, igual que en el código de M5.
+        pendiente es el estado de alta. buscando indica que comenzó el
+        despacho. La búsqueda termina en asignada si gana un conductor,
+        cancelada si cancela el cliente o sin_disponibilidad si se agota sin
         asignación.
     EstadoOferta:
       type: string
-      enum: [PENDIENTE, ACEPTADA, RECHAZADA, VENCIDA, CANCELADA]
+      enum: [pendiente, aceptada, rechazada, vencida, cancelada]
       description: |
-        PENDIENTE espera una decisión. ACEPTADA corresponde a la única oferta
-        ganadora. RECHAZADA registra un rechazo y VENCIDA indica que pasó su
-        plazo de respuesta. CANCELADA registra el retiro de la oferta al
+        Los valores van en snake_case minúscula, igual que en el código de M5.
+        pendiente espera una decisión. aceptada corresponde a la única oferta
+        ganadora. rechazada registra un rechazo y vencida indica que pasó su
+        plazo de respuesta. cancelada registra el retiro de la oferta al
         cerrarse el despacho por asignación o cancelación.
     EstadoBusqueda:
       type: string
-      enum: [ACTIVA, AGOTADA, FINALIZADA]
+      enum: [activa, agotada, finalizada]
       description: |
-        ACTIVA indica despacho en curso. AGOTADA indica que la búsqueda
-        terminó sin asignación. FINALIZADA indica cierre por asignación
+        Los valores van en snake_case minúscula, igual que en el código de M5.
+        activa indica despacho en curso. agotada indica que la búsqueda
+        terminó sin asignación. finalizada indica cierre por asignación
         o cancelación.
     Solicitud:
       allOf:
@@ -927,7 +930,7 @@ components:
             - properties:
                 estado:
                   not:
-                    enum: [ASIGNADA]
+                    enum: [asignada]
             - required: [conductor_id]
     VencimientoOferta:
       type: string

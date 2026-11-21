@@ -18,6 +18,6 @@ model Solicitud {
   tipoActivacion String  @default("Inmediata")
   reservaId     String?  @unique
   conductorId   String?
-  estado        String   @default("PENDIENTE_ASIGNACION")
+  estado        String   @default("pendiente")
   creadaEn      DateTime @default(now())
 }

@@ -41,7 +41,7 @@ function crearOferta(solicitudId, conductorId, ttlSegundos) {
   const miOferta = {
     solicitudId: solicitudId,           // ID del viaje que pidió el pasajero
     conductorId: conductorId,           // ID del conductor al que le mandamos la oferta
-    estado: "PENDIENTE",                // Toda oferta recién creada arranca PENDIENTE
+    estado: "pendiente",                // Toda oferta recién creada arranca pendiente
     enviadaEn: enviadaEn,               // Momento exacto en que se envió
     venceEn: enviadaEn + ttlSegundos    // Momento en que caduca (hora de envío + TTL)
   };

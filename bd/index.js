@@ -94,7 +94,7 @@ app.patch('/solicitudes/:id/cancelar', async (req, res) => {
   try {
     const cancelada = await prisma.solicitud.update({
       where: { idSolicitud: req.params.id },
-      data: { estado: 'CANCELADA' },
+      data: { estado: 'cancelada' },
     });
     return res.status(200).json(mapSolicitud(cancelada));
   } catch (error) {
