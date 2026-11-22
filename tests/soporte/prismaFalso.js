@@ -24,9 +24,13 @@ function elegir(fila, select) {
 
 function crearPrismaFalso(ofertas = [], candidatos = []) {
   const filas = ofertas.map((o) => ({ respondidaEn: null, ...o }));
-  const filasCandidatos = candidatos.map((c) => ({ ronda: 1, reservadoEn: null, liberadoEn: null, ...c }));
+  const filasCandidatos = candidatos.map((c) => ({ ronda: 1, reservadoEn: null, omitidoEn: null, liberadoEn: null, ...c }));
   const llamadas = { transaccion: [] };
   const oferta = {
+    async createMany({ data }) {
+      for (const d of data) filas.push({ respondidaEn: null, ...d });
+      return { count: data.length };
+    },
     async findUnique({ where, select }) {
       const f = filas.find((x) => coincide(x, where));
       return f ? elegir(f, select) : null;
@@ -55,7 +59,7 @@ function crearPrismaFalso(ofertas = [], candidatos = []) {
         );
         if (repetido && skipDuplicates) continue;
         if (repetido) throw new Error("clave duplicada");
-        filasCandidatos.push({ reservadoEn: null, liberadoEn: null, ...d });
+        filasCandidatos.push({ reservadoEn: null, omitidoEn: null, liberadoEn: null, ...d });
         creados += 1;
       }
       return { count: creados };

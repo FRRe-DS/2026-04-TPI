@@ -31,6 +31,25 @@ function crearRepositorioCandidatos(prisma, { reloj = () => new Date() } = {}) {
       return { guardados: r.count };
     },
 
+    // Despacho por tandas: los que todavía no recibieron oferta, del más cercano al más lejano.
+    // Quedan fuera los ya reservados (con oferta), los omitidos por conflicto en M4 y los liberados.
+    pendientesDeOfertar: ({ solicitudId, ronda = 1 }, tx) =>
+      cliente(tx).candidato.findMany({
+        where: { solicitudId, ronda, reservadoEn: null, omitidoEn: null, liberadoEn: null },
+        orderBy: { posicion: "asc" },
+        select: { conductorId: true, distanciaM: true, tipoVehiculo: true },
+      }),
+
+    // M4 informó conflicto (otra solicitud lo reservó antes): no se les vuelve a ofertar.
+    async marcarOmitidos({ solicitudId, ronda = 1, conductorIds, ahora = reloj() }, tx) {
+      if (!conductorIds?.length) return { marcados: 0 };
+      const r = await cliente(tx).candidato.updateMany({
+        where: { solicitudId, ronda, conductorId: { in: conductorIds }, reservadoEn: null, omitidoEn: null },
+        data: { omitidoEn: ahora },
+      });
+      return { marcados: r.count };
+    },
+
     // M4 aceptó reservar al conductor (bloqueo temporal). Condicional: marca una sola vez.
     async marcarReservado({ solicitudId, ronda = 1, conductorId, ahora = reloj() }, tx) {
       const r = await cliente(tx).candidato.updateMany({

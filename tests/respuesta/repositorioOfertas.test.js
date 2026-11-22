@@ -67,6 +67,24 @@ describe("repositorioOfertas: escrituras condicionales", () => {
   });
 });
 
+describe("repositorioOfertas: crear una tanda", () => {
+  test("crea las ofertas pendientes con el mismo vencimiento", async () => {
+    const prisma = crearPrismaFalso();
+    const repo = crearRepositorioOfertas(prisma, { reloj: () => AHORA });
+    const r = await repo.crearTanda({
+      solicitudId: "sol-9",
+      ofertas: [{ ofertaId: "a", conductorId: "c1" }, { ofertaId: "b", conductorId: "c2" }],
+      venceEn: FUTURO,
+    });
+    assert.deepEqual(r, { creadas: 2 });
+    assert.deepEqual(prisma.filas.map((f) => [f.ofertaId, f.solicitudId, f.conductorId, f.estado, f.venceEn.getTime(), f.enviadaEn.getTime()]), [
+      ["a", "sol-9", "c1", "pendiente", FUTURO.getTime(), AHORA.getTime()],
+      ["b", "sol-9", "c2", "pendiente", FUTURO.getTime(), AHORA.getTime()],
+    ]);
+    assert.deepEqual(await repo.crearTanda({ solicitudId: "sol-9", ofertas: [], venceEn: FUTURO }), { creadas: 0 });
+  });
+});
+
 describe("repositorioOfertas: vencimientos", () => {
   test("listarVencidas trae solo pendientes vencidas, las más viejas primero y respeta el lote", async () => {
     const { repo } = armar([

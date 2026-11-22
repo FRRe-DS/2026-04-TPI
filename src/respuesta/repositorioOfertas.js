@@ -18,6 +18,22 @@ function crearRepositorioOfertas(prisma, { reloj = () => new Date() } = {}) {
   const cliente = (tx) => tx ?? prisma;
 
   return {
+    // Despacho por tandas: crea las ofertas de una tanda, todas PENDIENTES y con el mismo vencimiento.
+    async crearTanda({ solicitudId, ofertas, venceEn, ahora = reloj() }, tx) {
+      if (!ofertas?.length) return { creadas: 0 };
+      const r = await cliente(tx).oferta.createMany({
+        data: ofertas.map((o) => ({
+          ofertaId: o.ofertaId,
+          solicitudId,
+          conductorId: o.conductorId,
+          estado: EstadoOferta.PENDIENTE,
+          enviadaEn: ahora,
+          venceEn,
+        })),
+      });
+      return { creadas: r.count };
+    },
+
     // Solo lectura: sirve para pre-validar y para explicar por qué falló una escritura.
     obtenerPorId: (ofertaId, tx) =>
       cliente(tx).oferta.findUnique({

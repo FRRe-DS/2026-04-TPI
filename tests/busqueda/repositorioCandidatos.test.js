@@ -80,6 +80,26 @@ describe("repositorio de candidatos (lista devuelta por M4)", () => {
     assert.deepEqual(await repo.pendientesDeLiberar({ solicitudId: "s1" }), ["c1", "c9"], "c1 vuelve a estar reservado en la ronda 2");
   });
 
+  test("pendientesDeOfertar: en orden de cercanía, sin los reservados, omitidos ni liberados", async () => {
+    const { repo } = nuevo();
+    await repo.guardar({ solicitudId: "s1", lista });
+    await repo.guardar({ solicitudId: "otra", lista });
+    assert.deepEqual((await repo.pendientesDeOfertar({ solicitudId: "s1" })).map((c) => c.conductorId), ["c1", "c2", "c3"]);
+    await reservar(repo, "s1", ["c1"]);
+    assert.deepEqual(await repo.marcarOmitidos({ solicitudId: "s1", conductorIds: ["c2"] }), { marcados: 1 });
+    assert.deepEqual(await repo.pendientesDeOfertar({ solicitudId: "s1" }), [{ conductorId: "c3", distanciaM: 900, tipoVehiculo: "AUTO" }]);
+    assert.equal((await repo.pendientesDeOfertar({ solicitudId: "otra" })).length, 3, "no toca otras solicitudes");
+  });
+
+  test("marcarOmitidos es condicional: no marca a un reservado ni repite", async () => {
+    const { repo } = nuevo();
+    await repo.guardar({ solicitudId: "s1", lista });
+    await reservar(repo, "s1", ["c1"]);
+    assert.deepEqual(await repo.marcarOmitidos({ solicitudId: "s1", conductorIds: ["c1", "c2"] }), { marcados: 1 });
+    assert.deepEqual(await repo.marcarOmitidos({ solicitudId: "s1", conductorIds: ["c2"] }), { marcados: 0 });
+    assert.deepEqual(await repo.marcarOmitidos({ solicitudId: "s1", conductorIds: [] }), { marcados: 0 });
+  });
+
   test("una lista vacía no escribe nada", async () => {
     const { prisma, repo } = nuevo();
     assert.deepEqual(await repo.guardar({ solicitudId: "s1", lista: [] }), { guardados: 0 });

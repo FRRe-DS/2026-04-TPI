@@ -74,7 +74,13 @@ async function evaluarBusquedaAgotada({ solicitudId }, deps) {
     venceEn: busqueda.venceEn,
     ahora,
   });
-  if (!agotada) return { agotada: false, senalEnviada: false };
+  if (!agotada) {
+    // Sin ofertas pendientes y con candidatos: no hace falta esperar a que pasen los 20 s de la tanda.
+    if (ofertasPendientes === 0 && busqueda.candidatosRestantes > 0) {
+      await deps.busquedas.adelantarTanda({ solicitudId, ahora });
+    }
+    return { agotada: false, senalEnviada: false };
+  }
 
   const motivo = busqueda.candidatosRestantes === 0 ? "SIN_CANDIDATOS" : "PERIODO_VENCIDO";
   const resultado = await procesarBusquedaAgotada({ solicitudId, motivo }, deps);

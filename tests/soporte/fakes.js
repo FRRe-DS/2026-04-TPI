@@ -22,7 +22,7 @@ function crearMundo({ solicitudes = [], ofertas = [], busquedas = [], candidatos
     ofertas: new Map(ofertas.map((o) => [o.ofertaId, { ...o }])),
     busquedas: new Map(busquedas.map((b) => [b.solicitudId, { ...b }])),
     // Lista que devolvió M4. Los que se pasan acá se dan por reservados por M5 (reservadoEn). Clave: solicitud + conductor.
-    candidatos: new Map(candidatos.map((c) => [`${c.solicitudId}:${c.conductorId}`, { reservadoEn: ahora, liberadoEn: null, ...c }])),
+    candidatos: new Map(candidatos.map((c) => [`${c.solicitudId}:${c.conductorId}`, { reservadoEn: ahora, omitidoEn: null, liberadoEn: null, ...c }])),
     eventos: [],
   };
   const espias = {
@@ -30,7 +30,8 @@ function crearMundo({ solicitudes = [], ofertas = [], busquedas = [], candidatos
     conductorAsignado: [],
     liberados: [],
     reservados: [],
-    fallar: { cache: false, conductorAsignado: false, liberar: false, liberarIds: [], reservarIds: [] },
+    ofertasEnviadas: [],
+    fallar: { cache: false, conductorAsignado: false, liberar: false, liberarIds: [], reservarIds: [], enviarOfertas: false },
     conflictos: [],
   };
   let reloj = ahora;
@@ -61,6 +62,10 @@ function crearMundo({ solicitudes = [], ofertas = [], busquedas = [], candidatos
 
   // ── Equipo A ──
   const solicitudesPuerto = {
+    async obtenerDatosViaje(id) {
+      const s = estado.solicitudes.get(id);
+      return s?.origen ? { origen: s.origen, destino: s.destino, tipoVehiculo: s.tipoVehiculo } : null;
+    },
     async obtenerEstado(id) {
       await pausa();
       const s = estado.solicitudes.get(id);
@@ -104,6 +109,15 @@ function crearMundo({ solicitudes = [], ofertas = [], busquedas = [], candidatos
 
   // ── Equipo B ──
   const ofertasPuerto = {
+    async crearTanda({ solicitudId, ofertas, venceEn, ahora }) {
+      await pausa();
+      for (const o of ofertas) {
+        estado.ofertas.set(o.ofertaId, {
+          ofertaId: o.ofertaId, solicitudId, conductorId: o.conductorId, estado: EstadoOferta.PENDIENTE, enviadaEn: ahora, venceEn,
+        });
+      }
+      return { creadas: ofertas.length };
+    },
     async obtenerPorId(id) {
       await pausa();
       return copia(estado.ofertas.get(id));
@@ -169,6 +183,37 @@ function crearMundo({ solicitudes = [], ofertas = [], busquedas = [], candidatos
   };
 
   const busquedasPuerto = {
+    async crear({ solicitudId, venceEn, candidatosRestantes, proximaTandaEn }) {
+      await pausa();
+      const busquedaId = `bus-${solicitudId}`;
+      estado.busquedas.set(solicitudId, { busquedaId, solicitudId, estado: EstadoBusqueda.ACTIVA, venceEn, candidatosRestantes, proximaTandaEn });
+      return { busquedaId };
+    },
+    // Como la base: condicional sobre estado ACTIVA y proximaTandaEn <= ahora (si no tiene fecha, ya toca).
+    async reclamarTanda({ solicitudId, ahora, proximaTandaEn }) {
+      await pausa();
+      const b = estado.busquedas.get(solicitudId);
+      if (!b || b.estado !== EstadoBusqueda.ACTIVA) return false;
+      if (b.proximaTandaEn && new Date(b.proximaTandaEn) > ahora) return false;
+      b.proximaTandaEn = proximaTandaEn;
+      return true;
+    },
+    async registrarTanda({ solicitudId, candidatosRestantes }) {
+      const b = estado.busquedas.get(solicitudId);
+      if (b) b.candidatosRestantes = candidatosRestantes;
+    },
+    async listarTandasVencidas({ ahora, lote = 50 }) {
+      return [...estado.busquedas.values()]
+        .filter((b) => b.estado === EstadoBusqueda.ACTIVA && (!b.proximaTandaEn || new Date(b.proximaTandaEn) <= ahora))
+        .slice(0, lote)
+        .map((b) => ({ solicitudId: b.solicitudId }));
+    },
+    async adelantarTanda({ solicitudId, ahora }) {
+      const b = estado.busquedas.get(solicitudId);
+      if (!b || b.estado !== EstadoBusqueda.ACTIVA || !b.proximaTandaEn || new Date(b.proximaTandaEn) <= ahora) return false;
+      b.proximaTandaEn = ahora;
+      return true;
+    },
     async obtenerActiva(solicitudId) {
       await pausa();
       const b = estado.busquedas.get(solicitudId);
@@ -185,10 +230,29 @@ function crearMundo({ solicitudes = [], ofertas = [], busquedas = [], candidatos
 
   const candidatosPuerto = {
     async guardar({ solicitudId, lista }) {
-      for (const c of lista) {
+      lista.forEach((c, posicion) => {
         const clave = `${solicitudId}:${c.conductorId}`;
-        if (!estado.candidatos.has(clave)) estado.candidatos.set(clave, { solicitudId, conductorId: c.conductorId, reservadoEn: null, liberadoEn: null });
+        if (!estado.candidatos.has(clave)) {
+          estado.candidatos.set(clave, {
+            solicitudId, conductorId: c.conductorId, distanciaM: c.distanciaM, tipoVehiculo: c.tipoVehiculo, posicion,
+            reservadoEn: null, omitidoEn: null, liberadoEn: null,
+          });
+        }
+      });
+    },
+    async pendientesDeOfertar({ solicitudId }) {
+      return [...estado.candidatos.values()]
+        .filter((c) => c.solicitudId === solicitudId && !c.reservadoEn && !c.omitidoEn && !c.liberadoEn)
+        .sort((a, b) => (a.posicion ?? 0) - (b.posicion ?? 0))
+        .map(({ conductorId, distanciaM, tipoVehiculo }) => ({ conductorId, distanciaM, tipoVehiculo }));
+    },
+    async marcarOmitidos({ solicitudId, conductorIds, ahora }) {
+      let marcados = 0;
+      for (const id of conductorIds) {
+        const c = estado.candidatos.get(`${solicitudId}:${id}`);
+        if (c && !c.reservadoEn && !c.omitidoEn) { c.omitidoEn = ahora ?? reloj; marcados += 1; }
       }
+      return { marcados };
     },
     async marcarReservado({ solicitudId, conductorId, ahora }) {
       const c = estado.candidatos.get(`${solicitudId}:${conductorId}`);
@@ -230,6 +294,10 @@ function crearMundo({ solicitudes = [], ofertas = [], busquedas = [], candidatos
       if (espias.conflictos.includes(conductorId)) return false;
       espias.reservados.push({ solicitudId, conductorId });
       return true;
+    },
+    async enviarOfertas(datos) {
+      if (espias.fallar.enviarOfertas) throw new Error("M3 caído");
+      espias.ofertasEnviadas.push(datos);
     },
     async conductorAsignado(datos) {
       if (espias.fallar.conductorAsignado) throw new Error("M6 caído");

@@ -67,8 +67,11 @@ model Busqueda {
   estado              EstadoBusqueda @default(activa)
   venceEn             DateTime
   candidatosRestantes Int
+  proximaTandaEn      DateTime  // cuándo toca la siguiente tanda de ofertas (job de src/ofertas)
 
   @@index([solicitudId, estado])
+  // El job de tandas: activas cuya próxima tanda ya toca.
+  @@index([estado, proximaTandaEn])
 }
 
 // Lista que devolvió M4 para una solicitud. M4 reserva a TODOS los de la lista, así que al cerrar la
@@ -83,6 +86,7 @@ model Candidato {
   posicion     Int
   obtenidoEn   DateTime  @default(now())
   reservadoEn  DateTime?  // M4 aceptó el bloqueo temporal; solo a estos se los libera después
+  omitidoEn    DateTime?  // M4 informó conflicto (lo reservó otra solicitud): no se le ofrece
   liberadoEn   DateTime?
 
   @@id([solicitudId, ronda, conductorId])
