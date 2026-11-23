@@ -18,11 +18,11 @@
       <div class="sidebar-label">MENÚ PRINCIPAL</div>
       <nav class="side-nav" aria-label="Menú principal">
         <!-- Para agregar futuras secciones, añadir nuevos enlaces .nav-item aquí. -->
-        <a class="nav-item active" href="/ventana-de-solicitud.html" aria-current="page">
+        <a class="nav-item active" data-role-link="cliente" href="/ventana-de-solicitud.html" aria-current="page">
           <span class="nav-icon">＋</span>
           <span>Nueva solicitud</span>
         </a>
-        <a class="nav-item" href="/solicitudes.html">
+        <a class="nav-item" data-role-link="encargado" href="/solicitudes.html">
           <span class="nav-icon">▤</span>
           <span>Solicitudes creadas</span>
         </a>
@@ -41,7 +41,13 @@
           <h1>Solicitá tu viaje</h1>
           <p class="subtitle">Seleccioná el origen, el destino y el tipo de vehículo.</p>
         </div>
-        <div class="client-chip"><span class="client-avatar">001</span><span><small>CLIENTE</small><strong>ID 001</strong></span></div>
+        <div class="client-chip">
+          <span class="client-avatar" id="client-avatar">CL</span>
+          <span>
+            <small>CLIENTE</small>
+            <strong id="client-name">Cargando usuario...</strong>
+          </span>
+        </div>
       </header>
 
       <div class="content-grid">
@@ -117,6 +123,8 @@
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <button type="button" data-logout style="position:fixed;right:18px;top:18px">Cerrar sesión</button>
+  <script src="/js/auth.js"></script>
   <script src="/js/ventana-de-solicitud.js"></script>
 </body>
 </html>
