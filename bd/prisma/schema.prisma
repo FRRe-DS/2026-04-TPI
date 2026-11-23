@@ -1,6 +1,7 @@
 // Esquema M5: solicitudes persistidas en MySQL mediante Prisma.
 generator client {
   provider = "prisma-client-js"
+  output   = "../../node_modules/.prisma/client"
 }
 
 datasource db {
@@ -20,6 +21,85 @@ model Solicitud {
   tipoActivacion String  @default("Inmediata")
   reservaId     String?  @unique
   conductorId   String?
-  estado        String   @default("PENDIENTE_ASIGNACION")
+  estado        String   @default("pendiente")
   creadaEn      DateTime @default(now())
+}
+
+// Persistencia del flujo de despacho (src/ofertas, src/busqueda y src/respuesta).
+// Los valores de los enums coinciden con src/comun/estados.js.
+enum EstadoOferta {
+  pendiente
+  aceptada
+  rechazada
+  vencida
+  cancelada
+}
+
+enum EstadoBusqueda {
+  activa
+  agotada
+  finalizada
+}
+
+enum TipoEvento {
+  BUSQUEDA
+  OFERTA
+  RECHAZO
+  VENCIMIENTO
+  ACEPTACION
+  CANCELACION
+}
+
+model Oferta {
+  ofertaId     String       @id @default(uuid())
+  solicitudId  String
+  conductorId  String
+  estado       EstadoOferta @default(pendiente)
+  enviadaEn    DateTime     @default(now())
+  venceEn      DateTime
+  respondidaEn DateTime?
+
+  @@index([solicitudId, estado])
+  @@index([estado, venceEn])
+  @@unique([ofertaId, conductorId])
+}
+
+model Busqueda {
+  busquedaId          String         @id @default(uuid())
+  solicitudId         String
+  estado              EstadoBusqueda @default(activa)
+  venceEn             DateTime
+  candidatosRestantes Int
+  proximaTandaEn      DateTime
+
+  @@index([solicitudId, estado])
+  @@index([estado, proximaTandaEn])
+}
+
+model Candidato {
+  solicitudId  String
+  ronda        Int       @default(1)
+  conductorId  String
+  distanciaM   Float
+  tipoVehiculo String
+  posicion     Int
+  obtenidoEn   DateTime  @default(now())
+  reservadoEn  DateTime?
+  omitidoEn    DateTime?
+  liberadoEn   DateTime?
+
+  @@id([solicitudId, ronda, conductorId])
+  @@index([solicitudId, liberadoEn])
+}
+
+model Evento {
+  eventoId    String    @id @default(uuid())
+  solicitudId String
+  tipo        TipoEvento
+  conductorId String?
+  ofertaId    String?
+  ocurridoEn  DateTime
+  detalle     String?
+
+  @@index([solicitudId, ocurridoEn])
 }

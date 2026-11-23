@@ -7,18 +7,22 @@ const jwt = require("jsonwebtoken");
 const { errores } = require("./errores");
 const { normalizarRol } = require("./roles");
 
+function leerClaim(claims, ruta) {
+  return String(ruta || "").split(".").reduce((actual, parte) => actual?.[parte], claims);
+}
+
 function construirIdentidad(claims, cfg) {
-  const identidadId = claims[cfg.claimIdentidad];
+  const identidadId = leerClaim(claims, cfg.claimIdentidad);
   const esValido =
     (typeof identidadId === "string" && identidadId.length > 0) ||
     typeof identidadId === "number";
   if (!esValido) throw errores.noAutenticado();
 
-  const brutos = claims[cfg.claimRoles];
+  const brutos = leerClaim(claims, cfg.claimRoles);
   const lista = Array.isArray(brutos) ? brutos : brutos ? [brutos] : [];
   const roles = lista.map(normalizarRol).filter(Boolean);
 
-  const conductor = cfg.claimConductor ? claims[cfg.claimConductor] : null;
+  const conductor = cfg.claimConductor ? leerClaim(claims, cfg.claimConductor) : null;
 
   return Object.freeze({
     identidadId: String(identidadId),

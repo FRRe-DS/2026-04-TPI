@@ -26,6 +26,7 @@ function crearClienteHttp({
   esperaBaseMs = 100,
   fetchImpl = globalThis.fetch,
   logger,
+  tokenPorDefecto,
 } = {}) {
   if (!baseUrl) throw new Error("crearClienteHttp: falta baseUrl");
   const base = baseUrl.replace(/\/+$/, "");
@@ -42,7 +43,8 @@ function crearClienteHttp({
         const encabezados = { accept: "application/json" };
         if (cuerpo !== undefined) encabezados["content-type"] = "application/json";
         if (claveIdempotencia) encabezados["idempotency-key"] = claveIdempotencia;
-        if (token) encabezados.authorization = `Bearer ${token}`;
+        const tokenFinal = token || tokenPorDefecto;
+        if (tokenFinal) encabezados.authorization = `Bearer ${tokenFinal}`;
 
         const respuesta = await fetchImpl(base + ruta, {
           method: metodo,

@@ -8,11 +8,11 @@ la documentación y las pruebas.
 
 | Carpeta | Contenido y responsabilidad |
 |---|---|
-| `front/` | Interfaz web y servidor HTTP del frontend. `servidor.js` sirve las páginas estáticas, realiza el login/autorización con Keycloak y expone las rutas usadas por la interfaz. |
+| `front/` | Interfaz web y BFF HTTP. `servidor.js` sirve las páginas estáticas, valida login/roles con Keycloak y reenvía las operaciones al backend `src/main.js`. |
 | `front/js/` | Lógica del navegador: `auth.js` inicializa Keycloak y aplica la navegación por roles; los otros archivos manejan las pantallas de solicitudes, administración y creación de viajes. |
 | `front/css/` | Estilos de cada pantalla del frontend. |
-| `bd/` | API de persistencia de M5, conexión a MySQL mediante Prisma, esquema de solicitudes y compose para levantar MySQL. |
-| `bd/prisma/` | Esquema Prisma de las solicitudes almacenadas por M5. |
+| `bd/` | Configuración de MySQL y esquema Prisma compartido por el backend; `index.js` conserva una API de persistencia simple para desarrollo anterior. |
+| `bd/prisma/` | Esquema Prisma de solicitudes, ofertas, búsquedas, candidatos y eventos. |
 | `src/` | Lógica de dominio y componentes del backend de solicitudes/despacho. |
 | `src/asignacion/` | Procesamiento de aceptación, asignación única, cancelaciones, búsqueda agotada, notificaciones y puertos requeridos por el orquestador. |
 | `src/busqueda/` | Búsqueda y ordenamiento de candidatos, además de pruebas relacionadas. |
@@ -36,11 +36,29 @@ la documentación y las pruebas.
 
 ## Estado actual
 
-La API de persistencia implementada en `bd/index.js` guarda solicitudes M5 en
-MySQL. El frontend se inicia por separado desde `front/servidor.js`; los pasos
-están en `readmeParaLevantarBD.txt`.
+El backend principal persiste solicitudes y datos de despacho en MySQL. El
+frontend se inicia por separado desde `front/servidor.js`; los pasos de la
+arquitectura integrada están en la sección siguiente.
 
-`src/main.js` contiene actualmente un esquema/pseudocódigo del flujo de
-despacho; no es un entrypoint Node.js ejecutable. Además, `src/ofertas/` y
-algunas áreas de `src/` están presentes como estructura de trabajo, pero no
-tienen todavía la implementación completa del flujo distribuido.
+`src/main.js` es el backend de M5. El frontend valida la sesión con Keycloak y
+envía sus operaciones a esta API; el backend persiste solicitudes con Prisma,
+coordina el despacho por tandas y procesa respuestas de conductores. Las
+llamadas a M3, M4, M6 y M7 se configuran por variables de entorno. Las rutas
+que los contratos externos aún no fijan deben completarse antes de iniciar el
+servidor.
+
+## Iniciar el backend integrado
+
+1. Instalá las dependencias desde la raíz con `npm install`.
+2. Usá `.env.example` como plantilla para completar `.env`: configurá MySQL,
+   Keycloak, los módulos externos y sus rutas. `INTERNAL_API_TOKEN` debe tener
+   exactamente el mismo valor en `.env` y `front/.env`.
+3. Configurá `front/.env` con el mismo `INTERNAL_API_TOKEN` y
+   `API_URL=http://localhost:3001`.
+4. Con MySQL disponible, ejecutá `npm run db:generate` y `npm run db:push`.
+5. Iniciá el backend con `npm start` y el frontend con
+   `node --env-file=front/.env front/servidor.js`.
+
+El puerto `3001` es el backend principal. El backend accede a MySQL directamente;
+no inicies `bd/index.js` como API para el frontend, porque omite la lógica de
+despacho de `src/main.js`.

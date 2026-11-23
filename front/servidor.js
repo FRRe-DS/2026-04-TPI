@@ -75,6 +75,7 @@ async function apiRequest(route, options = {}) {
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      'x-m5-internal-token': process.env.INTERNAL_API_TOKEN || '',
       ...(options.headers || {})
     }
   });
@@ -288,6 +289,7 @@ async function requireRole(req, requiredRole) {
 
     return {
       roles,
+      identidadId: token.sub || '',
       email: token.email || '',
       username: token.preferred_username || '',
       nombre: [token.given_name, token.family_name].filter(Boolean).join(' ').trim()
@@ -345,9 +347,9 @@ http.createServer(async (req, res) => {
         return json(res, auth.error, { error: message });
       }
 
-      if (!auth.email) {
+      if (!auth.identidadId) {
         return json(res, 400, {
-          error: 'El usuario autenticado no tiene un email disponible en Keycloak.'
+          error: 'El usuario autenticado no tiene un identificador disponible en Keycloak.'
         });
       }
 
@@ -362,7 +364,7 @@ http.createServer(async (req, res) => {
       const row = await apiRequest('/solicitudes', {
         method: 'POST',
         body: JSON.stringify({
-          idCliente: auth.email,
+          idCliente: auth.identidadId,
           origen: body.origen,
           destino: body.destino,
           tipoVehiculo: body.tipoVehiculo,
@@ -396,7 +398,7 @@ http.createServer(async (req, res) => {
       const solicitudes = await apiRequest('/solicitudes');
       const propia = solicitudes.find(row => (row.solicitudId || row.idSolicitud) === solicitudId);
       if (!propia) return json(res, 404, { error: 'Solicitud no encontrada.' });
-      if ((propia.clienteId || propia.idCliente) !== auth.email) return json(res, 403, { error: 'Solo podés cancelar tus propios viajes.' });
+      if ((propia.clienteId || propia.idCliente) !== auth.identidadId) return json(res, 403, { error: 'Solo podés cancelar tus propios viajes.' });
       const result = await apiRequest(`/solicitudes/${encodeURIComponent(solicitudId)}/cancelar`, { method: 'PATCH' });
       return json(res, 200, { solicitud: { ...mapDbToUi(result), clienteNombre: auth.nombre || auth.username || 'Cliente' } });
     } catch (error) {
