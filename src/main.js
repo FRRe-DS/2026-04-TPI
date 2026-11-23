@@ -41,6 +41,7 @@ function mapSolicitud(row) {
     tipoVehiculo: row.tipoVehiculo,
     vehiculo_id: row.vehiculo_id ?? null,
     costo: row.costo ?? null,
+    moneda: row.moneda ?? null,
     tipoActivacion: row.tipoActivacion,
     reservaId: row.reservaId,
     conductorId: row.conductorId,
@@ -119,6 +120,11 @@ function crearPersistencia(prisma) {
       orderBy: { creadaEn: "asc" },
       take: lote,
       select: { idSolicitud: true, origenLat: true, origenLng: true, destinoLat: true, destinoLng: true, tipoVehiculo: true },
+    }),
+    // Completa el vehículo asociado al conductor ganador sin alterar la asignación ya confirmada.
+    actualizarVehiculoAsignado: async ({ solicitudId, conductorId, vehiculoId }) => prisma.solicitud.updateMany({
+      where: { idSolicitud: solicitudId, conductorId, estado: "asignada" },
+      data: { vehiculo_id: vehiculoId },
     }),
   };
 
@@ -242,11 +248,18 @@ function crearDependencias(prisma) {
   };
   const estimarTarifa = async ({ origen, destino, tipoVehiculo }) => {
     if (!m7) throw Object.assign(new Error("M7_URL no está configurada."), { status: 503 });
+    if (!["AUTO", "MOTO"].includes(tipoVehiculo)) {
+      throw Object.assign(new Error("tipoVehiculo debe ser AUTO o MOTO."), { status: 400 });
+    }
+    const origenValidado = validarPunto(origen, "origen");
+    const destinoValidado = validarPunto(destino, "destino");
     const query = new URLSearchParams({
-      origen_latitud: String(origen.lat), origen_longitud: String(origen.lng),
-      destino_latitud: String(destino.lat), destino_longitud: String(destino.lng),
+      origen_latitud: String(origenValidado.lat), origen_longitud: String(origenValidado.lng),
+      destino_latitud: String(destinoValidado.lat), destino_longitud: String(destinoValidado.lng),
     });
-    const rutaM4 = process.env.M4_RUTA_ESTIMACION || `/rutas/estimacion?${query}`;
+    const rutaBaseM4 = process.env.M4_RUTA_ESTIMACION || "/rutas/estimacion";
+    const separador = rutaBaseM4.includes("?") ? "&" : "?";
+    const rutaM4 = `${rutaBaseM4}${separador}${query}`;
     const trayecto = await m4.get(rutaM4);
     const distancia = Number(trayecto.distancia_estimada_km);
     const eta = Number(trayecto.eta_minutos);
@@ -258,6 +271,19 @@ function crearDependencias(prisma) {
       distancia_km: distancia,
       duracion_estimada_min: Math.ceil(eta),
     });
+  };
+  // M3 administra los vehículos de sus conductores; consulta el vehículo del ganador tras aceptar.
+  const obtenerVehiculoIdConductor = async (conductorId) => {
+    const respuesta = await m3.post(process.env.M3_RUTA_CONDUCTOR_DETALLE || "/conductores", { ids: [conductorId] });
+    const lista = Array.isArray(respuesta)
+      ? respuesta
+      : Array.isArray(respuesta?.data) ? respuesta.data
+        : respuesta?.conductores ?? respuesta?.data?.conductores ?? (respuesta ? [respuesta] : []);
+    const conductor = lista.find((item) =>
+      (item.conductor_id ?? item.conductorId ?? item.id) === conductorId
+    ) ?? (lista.length === 1 ? lista[0] : null);
+    const vehiculo = conductor?.vehiculo_id ?? conductor?.vehiculoId ?? conductor?.vehicle_id ?? conductor?.vehicleId ?? conductor?.vehiculo?.id;
+    return vehiculo == null ? null : String(vehiculo);
   };
 
   // Consulta a M2 y solo permite crear solicitudes si la cuenta está activa.
@@ -274,7 +300,7 @@ function crearDependencias(prisma) {
       throw Object.assign(new Error("La cuenta del cliente no está habilitada para crear solicitudes."), { status: 422 });
     }
   };
-  return { deps, estimarTarifa, validarCliente };
+  return { deps: { ...deps, obtenerVehiculoIdConductor }, estimarTarifa, validarCliente };
 }
 
 // Crea la aplicación HTTP, configura seguridad y registra las rutas usadas por el frontend y M3.
@@ -335,7 +361,9 @@ function crearApp({ prisma, deps, verificador, estimarTarifa, validarCliente }) 
   app.post("/solicitudes/estimacion", async (req, res, next) => {
     try {
       if (typeof estimarTarifa !== "function") return res.status(503).json({ error: "La integración con M7 no está configurada." });
-      const resultado = await estimarTarifa(req.body || {});
+      const { origen, destino, tipoVehiculo } = req.body || {};
+      if (!origen || !destino) return res.status(400).json({ error: "Seleccioná origen y destino para calcular el costo." });
+      const resultado = await estimarTarifa({ origen, destino, tipoVehiculo });
       res.json(resultado);
     } catch (error) { next(error); }
   });
@@ -353,11 +381,14 @@ function crearApp({ prisma, deps, verificador, estimarTarifa, validarCliente }) 
       await validarCliente(String(idCliente));
       const origenValidado = validarPunto(origen, "origen");
       const destinoValidado = validarPunto(destino, "destino");
+      const tarifa = await estimarTarifa({ origen: origenValidado, destino: destinoValidado, tipoVehiculo });
+      const costo = Number(tarifa?.desglose?.total);
+      if (!Number.isFinite(costo) || costo < 0) throw Object.assign(new Error("M7 no devolvió un costo estimado válido."), { status: 502 });
       const solicitud = await prisma.solicitud.create({ data: {
         idCliente: String(idCliente),
         origenLat: origenValidado.lat, origenLng: origenValidado.lng,
         destinoLat: destinoValidado.lat, destinoLng: destinoValidado.lng,
-        tipoVehiculo, vehiculo_id: null, costo: null, tipoActivacion,
+        tipoVehiculo, vehiculo_id: null, costo, moneda: tarifa.moneda || "ARS", tipoActivacion,
         reservaId: reservaId ? String(reservaId) : null,
         estado: "buscando",
       } });
@@ -389,10 +420,13 @@ function crearApp({ prisma, deps, verificador, estimarTarifa, validarCliente }) 
         return res.status(400).json({ error: "El cuerpo de activación de reserva está incompleto o es inválido." });
       }
       await validarCliente(idCliente);
+      const tarifa = await estimarTarifa({ origen, destino, tipoVehiculo });
+      const costo = Number(tarifa?.desglose?.total);
+      if (!Number.isFinite(costo) || costo < 0) throw Object.assign(new Error("M7 no devolvió un costo estimado válido."), { status: 502 });
       const solicitud = await prisma.solicitud.create({ data: {
         idCliente, origenLat: origen.lat, origenLng: origen.lng,
         destinoLat: destino.lat, destinoLng: destino.lng,
-        tipoVehiculo, vehiculo_id: null, costo: null,
+        tipoVehiculo, vehiculo_id: null, costo, moneda: tarifa.moneda || "ARS",
         tipoActivacion: "Reserva", reservaId, estado: "buscando",
       } });
       app.locals.despacharSolicitud({
@@ -416,6 +450,15 @@ function crearApp({ prisma, deps, verificador, estimarTarifa, validarCliente }) 
     try {
       const rows = await prisma.solicitud.findMany({ orderBy: { creadaEn: "desc" } });
       res.json(rows.map(mapSolicitud));
+    } catch (error) { next(error); }
+  });
+
+  // Devuelve el estado actual para que el frontend pueda reflejar los cambios del despacho.
+  app.get("/solicitudes/:id", async (req, res, next) => {
+    try {
+      const row = await prisma.solicitud.findUnique({ where: { idSolicitud: req.params.id } });
+      if (!row) return res.status(404).json({ error: "Solicitud no encontrada." });
+      return res.json(mapSolicitud(row));
     } catch (error) { next(error); }
   });
 

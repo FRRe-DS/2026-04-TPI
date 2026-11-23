@@ -107,6 +107,11 @@ h1 { margin: 0; color: var(--navy); font-size: clamp(26px, 2.5vw, 35px); letter-
 .summary-separator { height: 1px; margin: 21px 0 10px; background: #eaf0f3; }
 .summary-row { display: flex; align-items: center; justify-content: space-between; gap: 9px; padding: 10px 0; color: #8aa0ac; font-size: 10px; }
 .summary-row strong { color: #3e5e70; font-size: 10px; }
+.summary-price { margin-top: 5px; padding: 2px 10px 9px; border-radius: 10px; background: #f2faff; }
+.summary-price .summary-row { padding-bottom: 4px; color: #527181; font-weight: 750; }
+.summary-price .summary-row strong { color: #147fa8; font-size: 15px; }
+.summary-price small { display: block; min-height: 14px; color: #849da9; font-size: 9px; line-height: 1.5; }
+.summary-price small.error { color: #a33d4a; }
 .pending { padding: 5px 8px; border-radius: 7px; background: #fff5df; color: #b7811f; font-size: 9px; font-weight: 850; }
 .info-box { display: flex; align-items: flex-start; gap: 8px; margin-top: 15px; padding: 11px; border-radius: 9px; background: #f2faff; color: #5d8da4; }
 .info-box > span { font-size: 14px; }

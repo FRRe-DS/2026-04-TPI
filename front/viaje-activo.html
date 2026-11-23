@@ -11,8 +11,8 @@
     <header class="topbar"><a class="brand" href="#"><span class="brand-mark">B</span><span><strong>Bajer</strong><small>Movilidad urbana</small></span></a><button type="button" data-logout>Cerrar sesión</button></header>
     <section class="content">
       <p class="eyebrow">SOLICITUD DE VIAJE</p>
-      <h1>Tu viaje está en curso</h1>
-      <p class="intro">Guardamos los datos de tu solicitud. Podés cancelar el viaje desde esta pantalla.</p>
+      <h1 id="trip-heading">Buscando conductor</h1>
+      <p class="intro" id="trip-message">Estamos buscando un conductor para tu viaje.</p>
       <article class="trip-card" aria-labelledby="trip-title">
         <div class="card-head"><div><span class="eyebrow">DETALLE</span><h2 id="trip-title">Resumen del viaje</h2></div><span class="status" id="trip-status">Pendiente</span></div>
         <div class="route"><div class="route-item"><span class="dot origin"></span><div><small>ORIGEN</small><strong id="trip-origin">—</strong></div></div><div class="route-item"><span class="dot destination"></span><div><small>DESTINO</small><strong id="trip-destination">—</strong></div></div></div>
@@ -22,7 +22,7 @@
           <div><dt>Vehículo</dt><dd id="trip-vehicle">—</dd></div>
           <div><dt>Vehículo asignado</dt><dd id="trip-vehicle-id">Sin asignar</dd></div>
           <div><dt>Conductor</dt><dd id="trip-driver">Sin asignar</dd></div>
-          <div><dt>Costo</dt><dd id="trip-cost">A definir</dd></div>
+          <div><dt>Costo estimado</dt><dd id="trip-cost">Calculando…</dd></div>
           <div><dt>Creada</dt><dd id="trip-created">—</dd></div>
         </dl>
         <p id="feedback" class="feedback" role="status" aria-live="polite"></p>

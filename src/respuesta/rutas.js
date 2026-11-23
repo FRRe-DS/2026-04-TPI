@@ -63,6 +63,17 @@ function crearRouterRespuesta({ deps, requerirRol, validar, resolverConductorId 
           ? await procesarAceptacion({ ofertaId, conductorId }, deps)
           : await procesarRechazo({ ofertaId, conductorId }, deps);
 
+        // Después de una aceptación, pide a M3 el vehículo del conductor ganador.
+        // La asignación ya está confirmada; si M3 no informa el vehículo, no se revierte el viaje.
+        if (resultado.resultado === "asignada" && typeof deps.obtenerVehiculoIdConductor === "function") {
+          void deps.obtenerVehiculoIdConductor(conductorId)
+            .then((vehiculoId) => {
+              if (!vehiculoId) return;
+              return deps.solicitudes.actualizarVehiculoAsignado({ solicitudId: oferta.solicitudId, conductorId, vehiculoId });
+            })
+            .catch((error) => req.log?.warn({ err: error, solicitudId: oferta.solicitudId, conductorId }, "no se pudo recuperar el vehículo del conductor ganador en M3"));
+        }
+
         return res.status(estadoHttpRespuesta(resultado.resultado)).json(cuerpoHttpRespuesta(resultado));
       } catch (error) {
         return next(error);

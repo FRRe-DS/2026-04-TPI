@@ -18,6 +18,7 @@ model Solicitud {
   tipoVehiculo  String
   vehiculo_id   String?
   costo         Float?
+  moneda        String?
   tipoActivacion String  @default("Inmediata")
   reservaId     String?  @unique
   conductorId   String?

@@ -61,6 +61,7 @@ function mapDbToUi(row) {
     tipoVehiculo: row.tipoVehiculo,
     vehiculo_id: row.vehiculo_id ?? null,
     costo: row.costo ?? null,
+    moneda: row.moneda ?? null,
     tipoActivacion: row.tipoActivacion,
     reservaId: row.reservaId || null,
     conductorId: row.conductorId || null,
@@ -331,6 +332,22 @@ http.createServer(async (req, res) => {
     });
   }
 
+  // ESTIMAR TARIFA: el cliente elige el trayecto y M5 consulta M4 y M7.
+  if (req.method === 'POST' && url.pathname === '/api/solicitudes/estimacion') {
+    try {
+      const auth = await requireRole(req, 'clientes-be');
+      if (auth.error) return json(res, auth.error, { error: auth.error === 403 ? 'Se requiere el rol clientes-be.' : 'Autenticación requerida o configuración de Keycloak incorrecta.' });
+      const body = await readBody(req);
+      const tarifa = await apiRequest('/solicitudes/estimacion', {
+        method: 'POST',
+        body: JSON.stringify({ origen: body.origen, destino: body.destino, tipoVehiculo: body.tipoVehiculo })
+      });
+      return json(res, 200, tarifa);
+    } catch (error) {
+      return json(res, error.statusCode || 502, { error: error.message || 'No se pudo calcular la tarifa.' });
+    }
+  }
+
   // CREAR SOLICITUD: rol clientes-be.
   if (
     req.method === 'POST' &&
@@ -385,6 +402,21 @@ http.createServer(async (req, res) => {
         error:
           `${error.message} Verificá que la API de bd esté ejecutándose en ${API_URL}.`
       });
+    }
+  }
+
+  // CONSULTAR UNA SOLICITUD: solo el cliente titular puede actualizar su viaje activo.
+  const getSolicitudMatch = url.pathname.match(/^\/api\/solicitudes\/([0-9a-f-]{36})$/i);
+  if (req.method === 'GET' && getSolicitudMatch) {
+    try {
+      const auth = await requireRole(req, 'clientes-be');
+      if (auth.error) return json(res, auth.error, { error: auth.error === 403 ? 'Se requiere el rol clientes-be.' : 'Autenticación requerida o configuración de Keycloak incorrecta.' });
+      const solicitudId = decodeURIComponent(getSolicitudMatch[1]);
+      const row = await apiRequest(`/solicitudes/${encodeURIComponent(solicitudId)}`, { headers: { 'Cache-Control': 'no-cache' } });
+      if (row.clienteId !== auth.identidadId) return json(res, 403, { error: 'Solo podés consultar tus propios viajes.' });
+      return json(res, 200, { solicitud: { ...mapDbToUi(row), clienteNombre: auth.nombre || auth.username || 'Cliente' } });
+    } catch (error) {
+      return json(res, error.statusCode || 502, { error: error.message || 'No se pudo consultar la solicitud.' });
     }
   }
 

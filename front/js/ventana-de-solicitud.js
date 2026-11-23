@@ -11,6 +11,9 @@
   let destino = null;
   let originMarker = null;
   let destinationMarker = null;
+  let estimateTimer = null;
+  let estimateVersion = 0;
+  let estimateReady = false;
 
   const $ = (id) => document.getElementById(id);
 
@@ -28,6 +31,7 @@
       nameElement.textContent = nombre;
       avatarElement.textContent = nombre.split(/\s+/).filter(Boolean).slice(0, 2)
         .map(palabra => palabra[0].toUpperCase()).join("") || "CL";
+      $("summary-customer").textContent = nombre;
     } catch (error) {
       console.error("Error al cargar los datos del usuario:", error);
       const nameElement = $("client-name");
@@ -117,6 +121,7 @@ cargarDatosUsuario();
       $("destination-coords").textContent = coordinatesText(destino);
       $("summary-destination").textContent = coordinatesText(destino);
     }
+    programarEstimacion();
   });
 
   originButton.addEventListener("click", () => {
@@ -140,6 +145,7 @@ cargarDatosUsuario();
 
       $("summary-vehicle").textContent =
         vehicle === "AUTO" ? "Auto" : "Moto";
+      programarEstimacion();
     });
   });
 
@@ -149,12 +155,82 @@ cargarDatosUsuario();
     element.textContent = message;
   }
 
+  function mostrarCosto(texto, estado, esError = false) {
+    $("summary-cost").textContent = texto;
+    const detalle = $("summary-cost-status");
+    detalle.textContent = estado;
+    detalle.classList.toggle("error", esError);
+  }
+
+  function formatoMoneda(total, moneda) {
+    try {
+      return new Intl.NumberFormat("es-AR", {
+        style: "currency",
+        currency: moneda || "ARS"
+      }).format(total);
+    } catch {
+      return `${moneda || "ARS"} ${total.toFixed(2)}`;
+    }
+  }
+
+  // Consulta a M5/M4/M7 con los puntos y vehículo seleccionados actualmente.
+  async function actualizarEstimacion(version) {
+    if (!origen || !destino) {
+      estimateReady = false;
+      submitButton.disabled = true;
+      mostrarCosto("—", "Seleccioná origen y destino para calcularlo.");
+      return;
+    }
+
+    mostrarCosto("Calculando…", "Consultando distancia en M4 y tarifa en M7.");
+    submitButton.disabled = true;
+    try {
+      const response = await fetch("/api/solicitudes/estimacion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ origen, destino, tipoVehiculo: vehicle })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "No se pudo calcular la tarifa.");
+      if (version !== estimateVersion) return;
+
+      const total = Number(data.desglose?.total);
+      if (!Number.isFinite(total) || total < 0) throw new Error("M7 no devolvió un total válido.");
+      estimateReady = true;
+      mostrarCosto(formatoMoneda(total, data.moneda), "Estimación orientativa. Se confirma al crear la solicitud.");
+      submitButton.disabled = false;
+    } catch (error) {
+      if (version !== estimateVersion) return;
+      estimateReady = false;
+      mostrarCosto("No disponible", error.message, true);
+      submitButton.disabled = true;
+    }
+  }
+
+  // Agrupa cambios rápidos y descarta respuestas de precio para un trayecto que ya cambió.
+  function programarEstimacion() {
+    clearTimeout(estimateTimer);
+    const version = ++estimateVersion;
+    estimateReady = false;
+    submitButton.disabled = true;
+    if (!origen || !destino) {
+      void actualizarEstimacion(version);
+      return;
+    }
+    mostrarCosto("—", "Actualizando estimación para el recorrido seleccionado.");
+    estimateTimer = setTimeout(() => void actualizarEstimacion(version), 350);
+  }
+
   submitButton.addEventListener("click", async () => {
     if (!origen || !destino) {
       showFeedback(
         "Primero seleccioná el origen y el destino en el mapa.",
         "error"
       );
+      return;
+    }
+    if (!estimateReady) {
+      showFeedback("Esperá a que M7 calcule el costo estimado antes de crear la solicitud.", "error");
       return;
     }
 
@@ -198,11 +274,12 @@ cargarDatosUsuario();
         "error"
       );
     } finally {
-      submitButton.disabled = false;
+      submitButton.disabled = !estimateReady;
       submitButton.querySelector("span:first-child").textContent =
         "Crear solicitud";
     }
   });
 
+  submitButton.disabled = true;
   setPointMode("origen");
 })();

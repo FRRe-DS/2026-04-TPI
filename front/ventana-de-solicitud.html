@@ -110,11 +110,15 @@
             <div class="summary-stop"><i class="summary-dot dot-b"></i><div><small>DESTINO</small><strong id="summary-destination">Sin seleccionar</strong></div></div>
           </div>
           <div class="summary-separator"></div>
-          <div class="summary-row"><span>Cliente</span><strong>001</strong></div>
+          <div class="summary-row"><span>Cliente</span><strong id="summary-customer">—</strong></div>
           <div class="summary-row"><span>Vehículo</span><strong id="summary-vehicle">Auto</strong></div>
           <div class="summary-row"><span>Activación</span><strong>Inmediata</strong></div>
-          <div class="summary-row"><span>Estado inicial</span><span class="pending">Pendiente</span></div>
-          <div class="info-box"><span>ⓘ</span><p>La búsqueda de conductores se integrará con el módulo M4 en una siguiente etapa.</p></div>
+          <div class="summary-row"><span>Estado inicial</span><span class="pending">Buscando conductor</span></div>
+          <div class="summary-price">
+            <div class="summary-row"><span>Costo estimado</span><strong id="summary-cost">—</strong></div>
+            <small id="summary-cost-status" aria-live="polite">Seleccioná origen y destino para calcularlo.</small>
+          </div>
+          <div class="info-box"><span>ⓘ</span><p>El importe es una estimación calculada por M7 y se vuelve a confirmar al crear la solicitud.</p></div>
           <div id="created-result" class="created-result" hidden></div>
         </aside>
       </div>
