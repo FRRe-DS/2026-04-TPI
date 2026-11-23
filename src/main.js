@@ -1,7 +1,9 @@
 void main()
 {
 
-sacar_datos_asignacion_pendiente, activacion=inmediata();
+recibir_solicitud();
+
+generar_solicitud();crearInmediato();
 
 buscar_conductor();
 //resivir la lista de conductores disponibles
@@ -13,9 +15,5 @@ esperar_respuesta_conductor();
 
 asignar_conductor()-notificar_usuario();
 
-mandar_mensaje_M6();
-
-esperar_respuesta_m6();
-
-Guardar_solicitud();//guardar en la base de datos
+mandar_mensaje_M6();Guardar_solicitud();//guardar en la base de datos
 }

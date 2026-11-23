@@ -1,8 +1,5 @@
 (() => {
-  if (sessionStorage.getItem("viajeActivo")) {
-    location.replace("/viaje-activo.html");
-    return;
-  }
+  const CLIENTE_ID = "001";
   const initialCenter = [-27.451, -58.986];
 
   let vehicle = "AUTO";
@@ -13,30 +10,6 @@
   let destinationMarker = null;
 
   const $ = (id) => document.getElementById(id);
-
-  async function cargarDatosUsuario() {
-    try {
-      await window.authReady;
-      const claims = window.keycloak?.tokenParsed || {};
-      const nombreCompleto = [claims.given_name, claims.family_name]
-        .filter(Boolean).join(" ").trim();
-      const nombre = nombreCompleto || claims.name || claims.preferred_username || claims.email || "Cliente";
-      const nameElement = $("client-name");
-      const avatarElement = $("client-avatar");
-      if (!nameElement || !avatarElement) return;
-
-      nameElement.textContent = nombre;
-      avatarElement.textContent = nombre.split(/\s+/).filter(Boolean).slice(0, 2)
-        .map(palabra => palabra[0].toUpperCase()).join("") || "CL";
-    } catch (error) {
-      console.error("Error al cargar los datos del usuario:", error);
-      const nameElement = $("client-name");
-      if (nameElement) nameElement.textContent = "Cliente";
-    }
-}
-
-// Cargar los datos de la cuenta activa.
-cargarDatosUsuario();
 
   const originButton = $("choose-origin");
   const destinationButton = $("choose-destination");
@@ -169,6 +142,7 @@ cargarDatosUsuario();
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
+          clienteId: CLIENTE_ID,
           origen: origen,
           destino: destino,
           tipoVehiculo: vehicle,
@@ -185,10 +159,15 @@ cargarDatosUsuario();
       }
 
       const solicitud = data.solicitud || data;
-      solicitud.clienteNombre = solicitud.clienteNombre || $("client-name").textContent || "Cliente";
-      sessionStorage.setItem("viajeActivo", JSON.stringify(solicitud));
-      location.replace("/viaje-activo.html");
-      return;
+
+      showFeedback(
+        `Solicitud guardada en la base de datos. ID: ${solicitud.solicitudId} · Estado: ${solicitud.estado}. Persistida en MySQL.`,
+        "success"
+      );
+
+      $("created-result").hidden = false;
+      $("created-result").textContent =
+        `Solicitud: ${solicitud.solicitudId} · Cliente: ${solicitud.clienteId} · Vehículo: ${solicitud.tipoVehiculo} · Estado: ${solicitud.estado}`;
 
     } catch (error) {
       console.error("Error al crear solicitud:", error);

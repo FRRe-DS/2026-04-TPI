@@ -15,11 +15,9 @@ model Solicitud {
   destinoLat    Float
   destinoLng    Float
   tipoVehiculo  String
-  vehiculo_id   String?
-  costo         Float?
   tipoActivacion String  @default("Inmediata")
   reservaId     String?  @unique
   conductorId   String?
-  estado        String   @default("PENDIENTE_ASIGNACION")
+  estado        String   @default("pendiente")
   creadaEn      DateTime @default(now())
 }

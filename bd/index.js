@@ -30,8 +30,6 @@ function mapSolicitud(row) {
     origen: { lat: row.origenLat, lng: row.origenLng },
     destino: { lat: row.destinoLat, lng: row.destinoLng },
     tipoVehiculo: row.tipoVehiculo,
-    vehiculo_id: row.vehiculo_id,
-    costo: row.costo,
     tipoActivacion: row.tipoActivacion,
     reservaId: row.reservaId,
     conductorId: row.conductorId,
@@ -66,8 +64,6 @@ app.post('/solicitudes', async (req, res) => {
         destinoLat: coordDecimal(destino.lat, -90, 90, 'destino.lat'),
         destinoLng: coordDecimal(destino.lng, -180, 180, 'destino.lng'),
         tipoVehiculo,
-        vehiculo_id: null,
-        costo: null,
         tipoActivacion,
         reservaId,
         conductorId: null,
@@ -98,26 +94,13 @@ app.patch('/solicitudes/:id/cancelar', async (req, res) => {
   try {
     const cancelada = await prisma.solicitud.update({
       where: { idSolicitud: req.params.id },
-      data: { estado: 'CANCELADA' },
+      data: { estado: 'cancelada' },
     });
     return res.status(200).json(mapSolicitud(cancelada));
   } catch (error) {
     if (error.code === 'P2025') return res.status(404).json({ error: 'Solicitud no encontrada.' });
     console.error('Error al cancelar solicitud:', error);
     return res.status(500).json({ error: 'No se pudo cancelar la solicitud.' });
-  }
-});
-
-app.delete('/solicitudes/:id', async (req, res) => {
-  try {
-    const eliminada = await prisma.solicitud.delete({
-      where: { idSolicitud: req.params.id },
-    });
-    return res.status(200).json({ eliminado: true, solicitudId: eliminada.idSolicitud });
-  } catch (error) {
-    if (error.code === 'P2025') return res.status(404).json({ error: 'Solicitud no encontrada.' });
-    console.error('Error al eliminar solicitud:', error);
-    return res.status(500).json({ error: 'No se pudo eliminar la solicitud.' });
   }
 });
 
