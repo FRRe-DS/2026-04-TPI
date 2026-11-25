@@ -19,7 +19,7 @@ const solicitud = {
 
 // Una solicitud buscando y `n` candidatos que devolverá M4, del más cercano (c1) al más lejano.
 function mundo(n, { conflictos = [], despacho } = {}) {
-  const lista = Array.from({ length: n }, (_, i) => ({ conductorId: `c${i + 1}`, distanciaM: 100 * (i + 1), tipoVehiculo: "AUTO" }));
+  const lista = Array.from({ length: n }, (_, i) => ({ conductorId: `c${i + 1}`, distanciaKm: 0.1 * (i + 1), tipoVehiculo: "AUTO" }));
   const m = crearMundo({
     solicitudes: [{ ...solicitud, estado: EstadoSolicitud.BUSCANDO, conductorAsignadoId: null }],
     ahora: AHORA,
@@ -173,7 +173,7 @@ describe("despacho por tandas", () => {
     };
     // la búsqueda se abre a mano para que el cierre ocurra dentro de la primera tanda
     await m.deps.busquedas.crear({ solicitudId: "sol-1", venceEn: en(180), candidatosRestantes: 7, proximaTandaEn: AHORA });
-    await m.deps.candidatos.guardar({ solicitudId: "sol-1", lista: Array.from({ length: 7 }, (_, i) => ({ conductorId: `c${i + 1}`, distanciaM: i, tipoVehiculo: "AUTO" })) });
+    await m.deps.candidatos.guardar({ solicitudId: "sol-1", lista: Array.from({ length: 7 }, (_, i) => ({ conductorId: `c${i + 1}`, distanciaKm: i / 10, tipoVehiculo: "AUTO" })) });
     const r = await enviarTanda({ solicitudId: "sol-1" }, m.deps);
     assert.equal(r.resultado, "busqueda_cerrada");
     assert.equal(m.estado.ofertas.size, 0);

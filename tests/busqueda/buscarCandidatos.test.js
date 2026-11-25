@@ -61,7 +61,7 @@ describe("Búsqueda de candidatos (contrato M4)", () => {
     const m4 = clienteFalso([
       new Error("Servicio M4 no disponible"),
       new Error("Servicio M4 no disponible"),
-      { candidatos: [{ conductor_id: "c1", distancia_m: 300, tipo_vehiculo: "AUTO" }] },
+      { conductores: [{ conductor_id: "c1", distancia_origen_km: 0.3, tipo_vehiculo: "AUTO" }] },
     ]);
     const r = await buscador(m4).buscar(solicitud);
     assert.equal(m4.llamadas.length, 3);
@@ -82,33 +82,33 @@ describe("Búsqueda de candidatos (contrato M4)", () => {
     await assert.rejects(() => buscador(m4, { intentos: 3 }).buscar(solicitud), ErrorBusquedaCandidatos);
   });
 
-  test("ordena por distancia_m, filtra el tipo de vehículo y NO filtra por radio", async () => {
+  test("ordena por distancia_origen_km, filtra el tipo de vehículo y NO filtra por radio", async () => {
     const m4 = clienteFalso([
       {
         candidatos: [
-          { conductor_id: "lejos", distancia_m: 48000, tipo_vehiculo: "AUTO" },
-          { conductor_id: "moto", distancia_m: 50, tipo_vehiculo: "MOTO" },
-          { conductor_id: "cerca", distancia_m: 120.5, tipo_vehiculo: "auto" },
-          { distancia_m: 10, tipo_vehiculo: "AUTO" }, // sin conductor_id: se descarta
+          { conductor_id: "lejos", distancia_origen_km: 48, tipo_vehiculo: "AUTO" },
+          { conductor_id: "moto", distancia_origen_km: 0.05, tipo_vehiculo: "MOTO" },
+          { conductor_id: "cerca", distancia_origen_km: 0.1205, tipo_vehiculo: "auto" },
+          { distancia_origen_km: 0.01, tipo_vehiculo: "AUTO" }, // sin conductor_id: se descarta
         ],
       },
     ]);
     const r = await buscador(m4).buscar(solicitud);
     assert.deepEqual(r.map((c) => c.conductorId), ["cerca", "lejos"]);
-    assert.equal(r[0].distanciaM, 120.5);
+    assert.equal(r[0].distanciaKm, 0.1205);
   });
 
   test("si el mismo conductor viene repetido se queda con la menor distancia", async () => {
     const m4 = clienteFalso([
       {
         candidatos: [
-          { conductor_id: "c1", distancia_m: 900, tipo_vehiculo: "AUTO" },
-          { conductor_id: "c1", distancia_m: 400, tipo_vehiculo: "AUTO" },
+          { conductor_id: "c1", distancia_origen_km: 0.9, tipo_vehiculo: "AUTO" },
+          { conductor_id: "c1", distancia_origen_km: 0.4, tipo_vehiculo: "AUTO" },
         ],
       },
     ]);
     const r = await buscador(m4).buscar(solicitud);
-    assert.deepEqual(r.map((c) => [c.conductorId, c.distanciaM]), [["c1", 400]]);
+    assert.deepEqual(r.map((c) => [c.conductorId, c.distanciaKm]), [["c1", 0.4]]);
   });
 
   test("guarda la lista que devolvió M4 (M4 ya reservó a esos conductores), con su ronda", async () => {
@@ -116,8 +116,8 @@ describe("Búsqueda de candidatos (contrato M4)", () => {
     const candidatos = { guardar: async (x) => { guardados.push(x); } };
     const m4 = clienteFalso([
       { candidatos: [
-        { conductor_id: "c2", distancia_m: 500, tipo_vehiculo: "AUTO" },
-        { conductor_id: "c1", distancia_m: 100, tipo_vehiculo: "AUTO" },
+        { conductor_id: "c2", distancia_origen_km: 0.5, tipo_vehiculo: "AUTO" },
+        { conductor_id: "c1", distancia_origen_km: 0.1, tipo_vehiculo: "AUTO" },
       ] },
     ]);
     await buscador(m4, { candidatos }).buscar(solicitud);

@@ -52,12 +52,12 @@
 // busquedas.registrarTanda({ solicitudId, candidatosRestantes }, tx?)
 // busquedas.listarTandasVencidas({ ahora, lote }, tx?) -> [{ solicitudId }]  ACTIVAS con proximaTandaEn <= ahora
 // candidatos.pendientesDeOfertar({ solicitudId, ronda? }, tx?)
-//     -> [{ conductorId, distanciaM, tipoVehiculo }] en orden de cercanía; excluye reservados, omitidos y liberados.
+//     -> [{ conductorId, distanciaKm, tipoVehiculo }] en orden de cercanía; excluye reservados, omitidos y liberados.
 // candidatos.marcarOmitidos({ solicitudId, ronda?, conductorIds, ahora }, tx?)
 //     M4 informó conflicto: no se les vuelve a ofertar. Condicional: solo los que no estaban reservados.
 //
 // candidatos (lista que devolvió M4 para la solicitud; M5 reserva en M4 de a un conductor, antes de ofertarle)
-// candidatos.guardar({ solicitudId, ronda, lista: [{ conductorId, distanciaM, tipoVehiculo }], ahora }, tx?)
+// candidatos.guardar({ solicitudId, ronda, lista: [{ conductorId, distanciaKm, tipoVehiculo }], ahora }, tx?)
 //     Idempotente: repetir la misma (solicitudId, ronda, conductorId) no duplica.        (src/busqueda)
 // candidatos.marcarReservado({ solicitudId, ronda?, conductorId, ahora }, tx?)       (src/asignacion/reserva.js)
 //     Condicional: solo si todavía no estaba marcado. -> { marcados: number }

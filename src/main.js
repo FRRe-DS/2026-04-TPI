@@ -24,7 +24,7 @@ const { iniciarJobTandas } = require("./ofertas/jobTandas");
 const { iniciarJobVencimientos } = require("./respuesta/jobVencimientos");
 const { procesarCancelacionSolicitud } = require("./asignacion/procesarCancelacion");
 const { crearRouterRespuesta } = require("./respuesta/rutas");
-const { construirIdentidad, autenticar, requerirRol } = require("./comun/autenticacion");
+const { construirIdentidad, autenticar, requerirRol, requerirScope } = require("./comun/autenticacion");
 
 const PUERTO = Number(process.env.PORT) || 3001;
 const TOKEN_INTERNO = process.env.INTERNAL_API_TOKEN || "";
@@ -80,6 +80,8 @@ function crearPersistencia(prisma) {
       const fila = await (tx ?? prisma).solicitud.findUnique({ where: { idSolicitud: solicitudId } });
       if (!fila) return null;
       return {
+        clienteId: fila.idCliente,
+        reservaId: fila.reservaId,
         origen: { latitud: fila.origenLat, longitud: fila.origenLng },
         destino: { latitud: fila.destinoLat, longitud: fila.destinoLng },
         tipoVehiculo: fila.tipoVehiculo,
@@ -122,10 +124,13 @@ function crearPersistencia(prisma) {
       select: { idSolicitud: true, origenLat: true, origenLng: true, destinoLat: true, destinoLng: true, tipoVehiculo: true },
     }),
     // Completa el vehículo asociado al conductor ganador sin alterar la asignación ya confirmada.
-    actualizarVehiculoAsignado: async ({ solicitudId, conductorId, vehiculoId }) => prisma.solicitud.updateMany({
-      where: { idSolicitud: solicitudId, conductorId, estado: "asignada" },
-      data: { vehiculo_id: vehiculoId },
-    }),
+    actualizarVehiculoAsignado: async ({ solicitudId, conductorId, vehiculoId }) => {
+      const resultado = await prisma.solicitud.updateMany({
+        where: { idSolicitud: solicitudId, conductorId, estado: "asignada" },
+        data: { vehiculo_id: vehiculoId },
+      });
+      return { count: resultado.count };
+    },
   };
 
   // Adaptador de búsquedas: crea rondas, reclama tandas y actualiza su estado en la base.
@@ -190,19 +195,6 @@ function crearPersistencia(prisma) {
   return { solicitudes, ofertas, busquedas, candidatos, eventos, ejecutarEnTransaccion: crearEjecutarEnTransaccion(prisma) };
 }
 
-// Sustituye marcadores como {solicitudId} dentro de las rutas configuradas para otros módulos.
-function rutaConId(template, values) {
-  return template.replace(/\{(\w+)\}/g, (_match, key) => encodeURIComponent(values[key] ?? ""));
-}
-
-// Evita iniciar el backend con rutas externas de ejemplo que todavía no fueron acordadas.
-function rutaConfigurada(nombre, valor) {
-  if (!valor || valor.includes("REEMPLAZAR")) {
-    throw new Error(`${nombre} debe completarse con la ruta acordada en el contrato del módulo externo`);
-  }
-  return valor;
-}
-
 // Prepara clientes HTTP, rutas y dependencias que usa el flujo de despacho.
 // M2 valida clientes; M3, M4 y M6 participan del despacho; M7 calcula tarifas cuando se solicita.
 function crearDependencias(prisma) {
@@ -217,18 +209,42 @@ function crearDependencias(prisma) {
     ? crearClienteHttp({ baseUrl: process.env.M7_URL, tokenPorDefecto: process.env.M7_TOKEN, timeoutMs: 3000, reintentos: 2, logger })
     : null;
   const rutas = {
-    m3EnviarOfertas: ({ solicitudId }) => rutaConId(rutaConfigurada("M3_RUTA_ENVIAR_OFERTAS", process.env.M3_RUTA_ENVIAR_OFERTAS), { solicitudId }),
-    m6ConductorAsignado: ({ solicitudId }) => rutaConId(rutaConfigurada("M6_RUTA_CONDUCTOR_ASIGNADO", process.env.M6_RUTA_CONDUCTOR_ASIGNADO), { solicitudId }),
-    m4ReservarConductor: () => process.env.M4_RUTA_RESERVAR || "/reserva",
-    m4LiberarConductor: () => rutaConfigurada("M4_RUTA_LIBERAR", process.env.M4_RUTA_LIBERAR),
+    m3EnviarOfertas: () => process.env.M3_RUTA_ENVIAR_OFERTAS || "/api/v1/integration/m5/offers",
+    m6ConductorAsignado: () => process.env.M6_RUTA_CREAR_VIAJE || "/trips",
+    m4ReservarConductor: ({ conductorId }) => `/api/v1/conductores/${encodeURIComponent(conductorId)}/reserva`,
+    m4LiberarConductor: ({ conductorId }) => `/api/v1/conductores/${encodeURIComponent(conductorId)}/reserva`,
   };
-  rutaConfigurada("M3_RUTA_ENVIAR_OFERTAS", process.env.M3_RUTA_ENVIAR_OFERTAS);
-  rutaConfigurada("M4_RUTA_LIBERAR", process.env.M4_RUTA_LIBERAR);
-  rutaConfigurada("M6_RUTA_CONDUCTOR_ASIGNADO", process.env.M6_RUTA_CONDUCTOR_ASIGNADO);
-  const notificaciones = crearNotificaciones({ clienteM3: m3, clienteM4: m4, clienteM6: m6, rutas, logger });
   const persistencia = crearPersistencia(prisma);
+  const notificaciones = crearNotificaciones({
+    clienteM3: m3,
+    clienteM4: m4,
+    clienteM6: m6,
+    rutas,
+    logger,
+    obtenerVehiculoConductor: async (conductorId) => {
+      const respuesta = await m3.post(
+        process.env.M3_RUTA_CONDUCTOR_DETALLE || "/api/v1/integration/drivers/dispatch-info",
+        { conductor_id: conductorId }
+      );
+      if ((respuesta?.conductor_id ?? conductorId) !== conductorId || !respuesta?.vehiculo?.vehiculo_id) return null;
+      return {
+        vehiculoId: String(respuesta.vehiculo.vehiculo_id),
+        tipoVehiculo: respuesta.vehiculo.tipo_vehiculo,
+      };
+    },
+    solicitudes: persistencia.solicitudes,
+  });
   const buscador = crearBuscadorCandidatos({
-    clienteM4: { consultarM4: (pedido) => m4.post(process.env.M4_RUTA_BUSCAR || "/buscar", pedido) },
+    clienteM4: {
+      consultarM4: (pedido) => {
+        const query = new URLSearchParams({
+          origen_latitud: String(pedido.origen_latitud),
+          origen_longitud: String(pedido.origen_longitud),
+          tipo_vehiculo: String(pedido.tipo_vehiculo),
+        });
+        return m4.get(`${process.env.M4_RUTA_BUSCAR || "/api/v1/conductores/cercanos"}?${query}`);
+      },
+    },
     candidatos: persistencia.candidatos,
     logger,
   });
@@ -257,8 +273,9 @@ function crearDependencias(prisma) {
       origen_latitud: String(origenValidado.lat), origen_longitud: String(origenValidado.lng),
       destino_latitud: String(destinoValidado.lat), destino_longitud: String(destinoValidado.lng),
     });
-    const rutaBaseM4 = process.env.M4_RUTA_ESTIMACION || "/rutas/estimacion";
+    const rutaBaseM4 = process.env.M4_RUTA_ESTIMACION || "/api/v1/rutas/estimacion";
     const separador = rutaBaseM4.includes("?") ? "&" : "?";
+    query.set("tipo_vehiculo", tipoVehiculo);
     const rutaM4 = `${rutaBaseM4}${separador}${query}`;
     const trayecto = await m4.get(rutaM4);
     const distancia = Number(trayecto.distancia_estimada_km);
@@ -272,20 +289,6 @@ function crearDependencias(prisma) {
       duracion_estimada_min: Math.ceil(eta),
     });
   };
-  // M3 administra los vehículos de sus conductores; consulta el vehículo del ganador tras aceptar.
-  const obtenerVehiculoIdConductor = async (conductorId) => {
-    const respuesta = await m3.post(process.env.M3_RUTA_CONDUCTOR_DETALLE || "/conductores", { ids: [conductorId] });
-    const lista = Array.isArray(respuesta)
-      ? respuesta
-      : Array.isArray(respuesta?.data) ? respuesta.data
-        : respuesta?.conductores ?? respuesta?.data?.conductores ?? (respuesta ? [respuesta] : []);
-    const conductor = lista.find((item) =>
-      (item.conductor_id ?? item.conductorId ?? item.id) === conductorId
-    ) ?? (lista.length === 1 ? lista[0] : null);
-    const vehiculo = conductor?.vehiculo_id ?? conductor?.vehiculoId ?? conductor?.vehicle_id ?? conductor?.vehicleId ?? conductor?.vehiculo?.id;
-    return vehiculo == null ? null : String(vehiculo);
-  };
-
   // Consulta a M2 y solo permite crear solicitudes si la cuenta está activa.
   const validarCliente = async (clienteId) => {
     if (!m2) throw Object.assign(new Error("M2_URL no está configurada."), { status: 503 });
@@ -300,7 +303,7 @@ function crearDependencias(prisma) {
       throw Object.assign(new Error("La cuenta del cliente no está habilitada para crear solicitudes."), { status: 422 });
     }
   };
-  return { deps: { ...deps, obtenerVehiculoIdConductor }, estimarTarifa, validarCliente };
+  return { deps, estimarTarifa, validarCliente };
 }
 
 // Crea la aplicación HTTP, configura seguridad y registra las rutas usadas por el frontend y M3.
@@ -496,9 +499,10 @@ function crearApp({ prisma, deps, verificador, estimarTarifa, validarCliente }) 
     const router = crearRouterRespuesta({
       deps,
       requerirRol,
+      requerirScope,
       validar: require("./comun/validacion").validar,
     });
-    app.use(autenticar(verificador), router);
+    app.use("/api/v1", autenticar(verificador), router);
   }
 
   // Traduce errores internos a respuestas HTTP sin filtrar trazas ni detalles sensibles.
@@ -580,6 +584,7 @@ async function crearVerificadorKeycloak() {
   const configClaims = {
     claimIdentidad: process.env.JWT_CLAIM_IDENTIDAD || "sub",
     claimRoles: process.env.JWT_CLAIM_ROLES || "realm_access.roles",
+    claimScopes: process.env.JWT_CLAIM_SCOPES || "scope",
     claimConductor: process.env.JWT_CLAIM_CONDUCTOR || "conductor_id",
   };
   return async (token) => {

@@ -48,7 +48,8 @@ async function resolverRepeticion({ ofertaId, conductorId, solicitudId, resultad
       solicitud.estado === EstadoSolicitud.ASIGNADA &&
       solicitud.conductorAsignadoId === conductorId
     ) {
-      return { resultado: R.ASIGNADA, solicitudId, conductorId, ofertaId, repetida: true };
+      const tripId = await deps.notificaciones.conductorAsignado({ solicitudId, conductorId, ofertaId });
+      return { resultado: R.ASIGNADA, solicitudId, conductorId, ofertaId, repetida: true, tripId };
     }
   }
   return { ...resultadoOriginal, solicitudId };
@@ -135,6 +136,7 @@ async function procesarAceptacion({ ofertaId, conductorId }, deps) {
   // 3) Ya está confirmado. Avisos externos: un fallo acá NO deshace la asignación;
   //    se informa en `avisosFallidos` para reintentarlos.
   const avisosFallidos = [];
+  let tripId;
   const intentar = async (nombre, fn) => {
     try {
       await conTimeout(Promise.resolve().then(fn), deps.timeoutAvisosMs ?? TIMEOUT_AVISOS_MS);
@@ -147,9 +149,9 @@ async function procesarAceptacion({ ofertaId, conductorId }, deps) {
   await intentar("cacheOfertas", () =>
     deps.cacheOfertas.eliminar([ofertaId, ...canceladas.map((c) => c.ofertaId)])
   );
-  await intentar("conductorAsignado", () =>
-    deps.notificaciones.conductorAsignado({ solicitudId, conductorId, ofertaId })
-  );
+  await intentar("conductorAsignado", async () => {
+    tripId = await deps.notificaciones.conductorAsignado({ solicitudId, conductorId, ofertaId });
+  });
   // Se cierra la reserva temporal en M4 de todos los que sigan reservados (con o sin oferta, el
   // ganador incluido; menos los que ya salieron por rechazo o vencimiento). Que el ganador pase a
   // ocupado lo gestionan M3 y M4 entre ellos.
@@ -165,6 +167,7 @@ async function procesarAceptacion({ ofertaId, conductorId }, deps) {
     repetida: false,
     ofertasCanceladas: canceladas.map((c) => c.ofertaId),
     avisosFallidos,
+    ...(tripId ? { tripId } : {}),
   };
 }
 

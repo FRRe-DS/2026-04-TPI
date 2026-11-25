@@ -1,5 +1,5 @@
-// Endpoint POST /ofertas/:ofertaId/respuesta (RF-5.5): el conductor acepta o rechaza.
-// Cuerpo (contrato con M3): { solicitud_id, oferta_id, conductor_id, respuesta: "aceptado" | "rechazado" }.
+// Endpoint POST /api/v1/ofertas/:ofertaId/responder (RF-5.5): M3 remite la decisión autenticado por scope.
+// Cuerpo: { solicitud_id, oferta_id, conductor_id, respuesta: "aceptado" | "rechazado" }.
 //
 // Es un ORQUESTADOR: no decide nada de negocio. Aplica los controles de seguridad en orden y
 // llama a procesarAceptacion o procesarRechazo; después traduce el resultado a HTTP.
@@ -17,7 +17,6 @@ const express = require("express");
 const { ROLES, errores, asociarSolicitud } = require("../comun");
 const {
   procesarAceptacion,
-  verificarConductorDeOferta,
   esquemaParamsOferta,
   esquemaRespuestaOferta,
 } = require("../asignacion");
@@ -26,12 +25,15 @@ const { estadoHttpRespuesta, cuerpoHttpRespuesta } = require("./resultadosRespue
 
 // `resolverConductorId` es opcional: cómo pasar de la identidad del token al conductorId de la
 // oferta (por defecto, el claim configurado en JWT_CLAIM_CONDUCTOR).
-function crearRouterRespuesta({ deps, requerirRol, validar, resolverConductorId }) {
+function crearRouterRespuesta({ deps, requerirRol, requerirScope, validar }) {
   const router = express.Router();
+  const autorizarM3 = typeof requerirScope === "function"
+    ? requerirScope("m5:offers:respond")
+    : requerirRol(ROLES.CONDUCTOR);
 
   router.post(
-    "/ofertas/:ofertaId/respuesta",
-    requerirRol(ROLES.CONDUCTOR),
+    ["/ofertas/:ofertaId/responder", "/ofertas/:ofertaId/respuesta"],
+    autorizarM3,
     validar({ params: esquemaParamsOferta, body: esquemaRespuestaOferta }),
     async (req, res, next) => {
       try {
@@ -40,11 +42,7 @@ function crearRouterRespuesta({ deps, requerirRol, validar, resolverConductorId 
         const oferta = await deps.ofertas.obtenerPorId(ofertaId);
         if (!oferta) throw errores.noEncontrado("La oferta no existe");
 
-        const conductorId = await verificarConductorDeOferta({
-          identidad: req.identidad,
-          oferta,
-          ...(resolverConductorId ? { resolverConductorId } : {}),
-        });
+        const conductorId = cuerpo.conductor_id;
         asociarSolicitud(req, oferta.solicitudId); // los logs de este pedido llevan el solicitudId
 
         if (cuerpo.conductor_id !== oferta.conductorId) {
@@ -63,18 +61,18 @@ function crearRouterRespuesta({ deps, requerirRol, validar, resolverConductorId 
           ? await procesarAceptacion({ ofertaId, conductorId }, deps)
           : await procesarRechazo({ ofertaId, conductorId }, deps);
 
-        // Después de una aceptación, pide a M3 el vehículo del conductor ganador.
-        // La asignación ya está confirmada; si M3 no informa el vehículo, no se revierte el viaje.
-        if (resultado.resultado === "asignada" && typeof deps.obtenerVehiculoIdConductor === "function") {
-          void deps.obtenerVehiculoIdConductor(conductorId)
-            .then((vehiculoId) => {
-              if (!vehiculoId) return;
-              return deps.solicitudes.actualizarVehiculoAsignado({ solicitudId: oferta.solicitudId, conductorId, vehiculoId });
-            })
-            .catch((error) => req.log?.warn({ err: error, solicitudId: oferta.solicitudId, conductorId }, "no se pudo recuperar el vehículo del conductor ganador en M3"));
+        if (resultado.resultado === "asignada" && !resultado.tripId) {
+          return res.status(503).json({ error: "La asignación quedó registrada, pero M5 no pudo confirmar el viaje en M6. M3 puede reintentar." });
         }
-
-        return res.status(estadoHttpRespuesta(resultado.resultado)).json(cuerpoHttpRespuesta(resultado));
+        const respuestaHttp = cuerpoHttpRespuesta(resultado);
+        if (resultado.resultado === "asignada") {
+          respuestaHttp.status = "ACCEPTED";
+          respuestaHttp.tripId = resultado.tripId;
+        } else if (resultado.resultado === "rechazada") {
+          respuestaHttp.status = "REJECTED";
+          respuestaHttp.tripId = null;
+        }
+        return res.status(estadoHttpRespuesta(resultado.resultado)).json(respuestaHttp);
       } catch (error) {
         return next(error);
       }

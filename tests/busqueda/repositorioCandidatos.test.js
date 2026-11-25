@@ -6,9 +6,9 @@ const { crearPrismaFalso } = require("../soporte/prismaFalso");
 
 const AHORA = new Date("2026-10-20T12:00:00Z");
 const lista = [
-  { conductorId: "c1", distanciaM: 100, tipoVehiculo: "AUTO" },
-  { conductorId: "c2", distanciaM: 250.5, tipoVehiculo: "AUTO" },
-  { conductorId: "c3", distanciaM: 900, tipoVehiculo: "AUTO" },
+  { conductorId: "c1", distanciaKm: 0.1, tipoVehiculo: "AUTO" },
+  { conductorId: "c2", distanciaKm: 0.2505, tipoVehiculo: "AUTO" },
+  { conductorId: "c3", distanciaKm: 0.9, tipoVehiculo: "AUTO" },
 ];
 const reservar = (repo, solicitudId, ids, ronda = 1) =>
   Promise.all(ids.map((conductorId) => repo.marcarReservado({ solicitudId, ronda, conductorId })));
@@ -74,7 +74,7 @@ describe("repositorio de candidatos (lista devuelta por M4)", () => {
     await repo.guardar({ solicitudId: "s1", ronda: 1, lista });
     await reservar(repo, "s1", ["c1", "c2", "c3"]);
     await repo.marcarLiberados({ solicitudId: "s1", conductorIds: ["c1", "c2", "c3"] });
-    await repo.guardar({ solicitudId: "s1", ronda: 2, lista: [lista[0], { conductorId: "c9", distanciaM: 50, tipoVehiculo: "AUTO" }] });
+    await repo.guardar({ solicitudId: "s1", ronda: 2, lista: [lista[0], { conductorId: "c9", distanciaKm: 0.05, tipoVehiculo: "AUTO" }] });
     await reservar(repo, "s1", ["c1", "c9"], 2);
     assert.equal(prisma.filasCandidatos.length, 5);
     assert.deepEqual(await repo.pendientesDeLiberar({ solicitudId: "s1" }), ["c1", "c9"], "c1 vuelve a estar reservado en la ronda 2");
@@ -87,7 +87,7 @@ describe("repositorio de candidatos (lista devuelta por M4)", () => {
     assert.deepEqual((await repo.pendientesDeOfertar({ solicitudId: "s1" })).map((c) => c.conductorId), ["c1", "c2", "c3"]);
     await reservar(repo, "s1", ["c1"]);
     assert.deepEqual(await repo.marcarOmitidos({ solicitudId: "s1", conductorIds: ["c2"] }), { marcados: 1 });
-    assert.deepEqual(await repo.pendientesDeOfertar({ solicitudId: "s1" }), [{ conductorId: "c3", distanciaM: 900, tipoVehiculo: "AUTO" }]);
+    assert.deepEqual(await repo.pendientesDeOfertar({ solicitudId: "s1" }), [{ conductorId: "c3", distanciaKm: 0.9, tipoVehiculo: "AUTO" }]);
     assert.equal((await repo.pendientesDeOfertar({ solicitudId: "otra" })).length, 3, "no toca otras solicitudes");
   });
 

@@ -81,7 +81,7 @@ model Candidato {
   solicitudId  String
   ronda        Int       @default(1)
   conductorId  String
-  distanciaM   Float
+  distanciaKm Float
   tipoVehiculo String
   posicion     Int
   obtenidoEn   DateTime  @default(now())

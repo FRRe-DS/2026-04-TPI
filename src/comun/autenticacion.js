@@ -21,12 +21,17 @@ function construirIdentidad(claims, cfg) {
   const brutos = leerClaim(claims, cfg.claimRoles);
   const lista = Array.isArray(brutos) ? brutos : brutos ? [brutos] : [];
   const roles = lista.map(normalizarRol).filter(Boolean);
+  const brutosScopes = cfg.claimScopes ? leerClaim(claims, cfg.claimScopes) : [];
+  const scopes = Array.isArray(brutosScopes)
+    ? brutosScopes.flatMap((valor) => String(valor).split(/\s+/)).filter(Boolean)
+    : String(brutosScopes || "").split(/\s+/).filter(Boolean);
 
   const conductor = cfg.claimConductor ? leerClaim(claims, cfg.claimConductor) : null;
 
   return Object.freeze({
     identidadId: String(identidadId),
     roles,
+    scopes,
     conductorId: conductor ? String(conductor) : null,
   });
 }
@@ -77,4 +82,13 @@ function requerirRol(...permitidos) {
   };
 }
 
-module.exports = { crearVerificadorLocal, autenticar, requerirRol, construirIdentidad };
+function requerirScope(...permitidos) {
+  const aceptados = new Set(permitidos);
+  return (req, res, next) => {
+    if (!req.identidad) return next(errores.noAutenticado());
+    const autorizado = (req.identidad.scopes || []).some((scope) => aceptados.has(scope));
+    return next(autorizado ? undefined : errores.prohibido());
+  };
+}
+
+module.exports = { crearVerificadorLocal, autenticar, requerirRol, requerirScope, construirIdentidad };

@@ -11,7 +11,7 @@ function mundoConLista(ids) {
     solicitudes: [{ solicitudId: "sol-1", estado: EstadoSolicitud.BUSCANDO, conductorAsignadoId: null }],
     busquedas: [{ busquedaId: "bus-1", solicitudId: "sol-1", estado: EstadoBusqueda.ACTIVA, venceEn: new Date("2026-10-20T12:10:00Z"), candidatosRestantes: 3 }],
   });
-  return { m, lista: ids.map((conductorId, i) => ({ conductorId, distanciaM: 100 * (i + 1), tipoVehiculo: "AUTO" })) };
+  return { m, lista: ids.map((conductorId, i) => ({ conductorId, distanciaKm: 0.1 * (i + 1), tipoVehiculo: "AUTO" })) };
 }
 const reservadosEnBD = (m) => [...m.estado.candidatos.values()].filter((c) => c.reservadoEn && !c.liberadoEn).map((c) => c.conductorId).sort();
 

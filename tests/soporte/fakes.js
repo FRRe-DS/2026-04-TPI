@@ -234,7 +234,7 @@ function crearMundo({ solicitudes = [], ofertas = [], busquedas = [], candidatos
         const clave = `${solicitudId}:${c.conductorId}`;
         if (!estado.candidatos.has(clave)) {
           estado.candidatos.set(clave, {
-            solicitudId, conductorId: c.conductorId, distanciaM: c.distanciaM, tipoVehiculo: c.tipoVehiculo, posicion,
+            solicitudId, conductorId: c.conductorId, distanciaKm: c.distanciaKm, tipoVehiculo: c.tipoVehiculo, posicion,
             reservadoEn: null, omitidoEn: null, liberadoEn: null,
           });
         }
@@ -244,7 +244,7 @@ function crearMundo({ solicitudes = [], ofertas = [], busquedas = [], candidatos
       return [...estado.candidatos.values()]
         .filter((c) => c.solicitudId === solicitudId && !c.reservadoEn && !c.omitidoEn && !c.liberadoEn)
         .sort((a, b) => (a.posicion ?? 0) - (b.posicion ?? 0))
-        .map(({ conductorId, distanciaM, tipoVehiculo }) => ({ conductorId, distanciaM, tipoVehiculo }));
+        .map(({ conductorId, distanciaKm, tipoVehiculo }) => ({ conductorId, distanciaKm, tipoVehiculo }));
     },
     async marcarOmitidos({ solicitudId, conductorIds, ahora }) {
       let marcados = 0;
@@ -302,6 +302,7 @@ function crearMundo({ solicitudes = [], ofertas = [], busquedas = [], candidatos
     async conductorAsignado(datos) {
       if (espias.fallar.conductorAsignado) throw new Error("M6 caído");
       espias.conductorAsignado.push(datos);
+      return "trip-fake-1";
     },
     // Como el real: devuelve los conductores liberados; si M4 falla con alguno, el error trae los que sí salieron.
     async liberarConductores(lista) {

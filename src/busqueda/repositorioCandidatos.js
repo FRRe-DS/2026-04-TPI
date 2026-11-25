@@ -21,7 +21,7 @@ function crearRepositorioCandidatos(prisma, { reloj = () => new Date() } = {}) {
           solicitudId,
           ronda,
           conductorId: c.conductorId,
-          distanciaM: c.distanciaM,
+          distanciaKm: c.distanciaKm,
           tipoVehiculo: String(c.tipoVehiculo),
           posicion,
           obtenidoEn: ahora,
@@ -37,7 +37,7 @@ function crearRepositorioCandidatos(prisma, { reloj = () => new Date() } = {}) {
       cliente(tx).candidato.findMany({
         where: { solicitudId, ronda, reservadoEn: null, omitidoEn: null, liberadoEn: null },
         orderBy: { posicion: "asc" },
-        select: { conductorId: true, distanciaM: true, tipoVehiculo: true },
+        select: { conductorId: true, distanciaKm: true, tipoVehiculo: true },
       }),
 
     // M4 informó conflicto (otra solicitud lo reservó antes): no se les vuelve a ofertar.

@@ -132,77 +132,73 @@ Reglas que no se pueden romper:
 4. Dentro de la transacción: primero el evento, después la oferta (orden de bloqueos).
 5. Avisos a Redis, M4 y M6 solo después del commit, con tiempo límite; si fallan, la respuesta no cambia.
 
-Supuestos a confirmar con el grupo: que el rechazo avise a M4 con `liberarConductores` (motivo `oferta_rechazada`), y las rutas de aviso de M4 y M6.
+El rechazo y el vencimiento liberan en M4 la reserva de ese conductor. Las rutas actuales se documentan
+en las secciones siguientes y se configuran mediante los adaptadores de M5.
 
 ## 7. Contrato con M4 (propuesta del grupo, a validar con M4)
 
-**Supuesto de trabajo:** M4 reserva temporalmente a los conductores que devuelve en la lista. La reserva es
-asunto interno de M4: M5 no tiene una llamada de "reservar".
+M4 devuelve candidatos sin reservarlos. M5 reserva a cada conductor individualmente antes de enviarle
+una oferta y libera las reservas cuando corresponde.
 
 Los cuerpos hacia M4 van en `snake_case` y los ids son `string` (uuid). La traducción desde `camelCase` se hace
 solo en `src/asignacion/notificaciones.js` y `src/busqueda/busquedaService.js`.
 
-### 7.1 Búsqueda de candidatos (`src/busqueda/busquedaService.js`, `POST {M4_URL}/buscar`)
+### 7.1 Búsqueda de candidatos (`src/busqueda/busquedaService.js`, `GET {M4_URL}/api/v1/conductores/cercanos`)
 
 Una llamada por solicitud. El radio lo decide M4 (radio inicial y ampliación según los conductores disponibles);
 M5 no manda radio, límite ni exclusiones, y tampoco filtra por radio.
 
 | M5 → M4 | Tipo |
 |---|---|
-| `solicitud_id` | string (uuid) |
-| `origen_latitud`, `origen_longitud` (del cliente) | real |
-| `destino_latitud`, `destino_longitud` (del cliente) | real |
+| `origen_latitud`, `origen_longitud` (del cliente) | query, real |
+| `tipo_vehiculo` | query, string |
 
 | M4 → M5 | Tipo |
 |---|---|
-| `candidatos[]` con `conductor_id` (el mismo uuid que maneja M3) | string (uuid) |
-| `distancia_m` | real |
+| `conductores[]` con `conductor_id` (el mismo uuid que maneja M3) | string (uuid) |
+| `distancia_origen_km` | real, kilómetros |
 | `tipo_vehiculo` | string |
 
 - **Lista vacía = "no hay conductores".** Es una respuesta válida y no se reintenta.
-- **Error, timeout o respuesta sin `candidatos[]`: se repite el intento** (3 intentos con espera creciente). Si
+- **Error, timeout o respuesta sin `conductores[]`: se repite el intento** (3 intentos con espera creciente). Si
   sigue fallando se lanza `ErrorBusquedaCandidatos`; **nunca** se toma como lista vacía ni se declara agotada.
-- M5 ordena por `distancia_m` (menor a mayor), filtra por `tipo_vehiculo` (el pedido lo trae la solicitud),
+- M5 conserva la distancia en kilómetros y ordena por `distancia_origen_km` (menor a mayor), filtra por `tipo_vehiculo` (el pedido lo trae la solicitud),
   descarta candidatos sin `conductor_id` y se queda con la menor distancia si un conductor viene repetido.
 - Las coordenadas se validan antes de llamar a M4: latitud entre -90 y 90, longitud entre -180 y 180.
 
-### 7.2 Liberar conductor (`notificaciones.liberarConductores`)
+### 7.2 Reservar y liberar conductor (`notificaciones`)
 
 | M5 → M4 | Tipo |
 |---|---|
-| `conductor_id` | string (uuid) |
+| Ruta | `POST /api/v1/conductores/{conductor_id}/reserva` |
+| `estado_temporal` | `RESERVADO` para bloquear; `LIBERADO` para liberar |
 | `solicitud_id` | string (uuid) |
-| `oferta_id` | string (uuid) |
-| `motivo` | `oferta_rechazada`, `oferta_vencida`, `solicitud_cerrada` (otro ganó) o `cancelada_por_cliente` |
 
-- Una llamada por conductor, con `Idempotency-Key: liberar:{ofertaId}`. M5 no manda un motivo que M4 no conozca.
-- Dónde se usa cada motivo: rechazo → `oferta_rechazada`; job de vencimientos → `oferta_vencida`; los perdedores
-  cuando otro conductor gana → `solicitud_cerrada`; cancelación del cliente → `cancelada_por_cliente`.
-- Respuesta esperada de M4: 200/204, también si el conductor ya estaba libre (repetir no da error).
+- M5 reserva de a un conductor y solo crea ofertas para reservas confirmadas. La clave es
+  `reservar:{solicitudId}:{conductorId}`; un conflicto 409 hace que M5 pruebe con el siguiente candidato.
+- M5 libera con `Idempotency-Key: liberar:{solicitudId}:{conductorId}` y el mismo `solicitud_id` que reservó.
+  Si se rechaza o vence una oferta, libera al conductor correspondiente; al cerrar la solicitud, libera
+  a los demás reservados que sigan activos, incluido el ganador.
 
-### 7.3 Conductor seleccionado (`notificaciones.conductorSeleccionado`)
+### 7.3 Creación del viaje tras la asignación (M3 y M6)
 
-Se manda una sola vez, después de confirmar la asignación, y **al ganador no se le manda "liberar"**.
+Después de que M5 confirma en su base al conductor ganador, consulta los datos del vehículo a M3 y crea
+el viaje en M6. M5 conserva el `tripId` real que devuelve M6 y lo devuelve a M3 junto con `status`.
 
-| M5 → M4 | Tipo |
+| Llamada | Contrato |
 |---|---|
-| `solicitud_id` | string (uuid) |
-| `conductor_id` | string (uuid) |
-| `oferta_id` | string (uuid) |
+| M5 → M3 | `POST /api/v1/integration/drivers/dispatch-info`, cuerpo `{ conductor_id }` |
+| M3 → M5 | `vehiculo.vehiculo_id` y `vehiculo.tipo_vehiculo` |
+| M5 → M6 | `POST /trips`, `requestId`, `clientId`, `driverId`, `vehicleId`, tipo y coordenadas |
 
-- Header `Idempotency-Key: seleccion:{solicitudId}:{conductorId}`.
-- M4 → M5: 200 si el conductor queda ocupado; 4xx si por alguna razón ya no está disponible.
-- Un 4xx no deshace la asignación (ya está confirmada): queda en `avisosFallidos` como `conductorSeleccionado` y
-  se registra en el log para revisarlo.
+- M6 recibe `Idempotency-Key: viaje:{solicitudId}`; reintentar la aceptación recupera el mismo viaje.
+- La ruta de creación de M6 es `/trips` y puede configurarse con `M6_RUTA_CREAR_VIAJE`.
 
-### 7.4 Pendiente
+### 7.4 Persistencia de distancia
 
-- **Liberar a los candidatos que nunca recibieron oferta.** Si M4 reserva a toda la lista, al cerrar la búsqueda
-  (asignación, agotada o cancelación) habría que liberar también a esos conductores. Hoy `Busqueda` solo guarda
-  `candidatosRestantes` (un número): haría falta guardar la lista de `conductor_id` y que `oferta_id` sea opcional
-  en la liberación. **No está implementado**; mientras tanto conviene que M4 libere solo las reservas pasado un tiempo máximo.
-- Autenticación entre servicios (token de M1 u otro) y rutas finales de M4: `notificaciones.js` las recibe por
-  parámetro (`rutas.m4LiberarConductor`, `rutas.m4ConductorSeleccionado`) y no tienen valor por defecto.
+M5 guarda `Candidato.distanciaKm` en kilómetros en el schema activo `bd/prisma/schema.prisma`. La base debe
+recibir una migración compatible antes de desplegar esta versión; la carpeta raíz `prisma/` no forma parte
+de este cambio y queda intacta.
 
 ### 7.5 Reglas comunes
 

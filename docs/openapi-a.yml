@@ -20,9 +20,8 @@ info:
        por vez, en ese orden, antes de mandarle la oferta. Si M4 informa un
        conflicto (409) porque otra solicitud lo reservó antes, M5 pasa al siguiente.
        Solo oferta a los conductores que logró reservar.
-    4. M5 entrega a M3 un lote de ofertas por solicitud con vencimiento de 30
-       segundos. Si hay un error o timeout de entrega, reintenta con los mismos
-       identificadores y vencimiento mientras el lote siga vigente.
+    4. M5 entrega cada oferta a M3 por separado con vencimiento de 30 segundos.
+       Si hay un error o timeout, reintenta la misma oferta con su identificador.
     5. M3 remite la respuesta del conductor a M5. Una única aceptación ganadora
        deja la oferta `aceptada` y la solicitud `asignada`. Un rechazo cierra
        esa oferta y la solicitud sigue `buscando` mientras queden ofertas vigentes.
@@ -510,21 +509,34 @@ x-integraciones:
     envio_ofertas:
       direccion: M5 a M3
       descripcion: |
-        Un lote por solicitud con todas las ofertas de esa solicitud. M3
-        confirma la recepción con 200. Ante error o timeout, M5 repite el
-        mismo envío y M3 deduplica por oferta_id. El método y la ruta de
-        recepción se acuerdan con M3.
+        Una llamada por cada oferta enviada a POST /api/v1/integration/m5/offers. M3
+        confirma la recepción con 202 Accepted. Ante error o timeout, M5
+        repite el mismo envío y M3 deduplica la oferta mediante su identificador
+        y la clave de idempotencia. La ruta coincide con el controlador actual.
       cuerpo:
-        $ref: '#/components/schemas/LoteOfertasM3'
+        $ref: '#/components/schemas/OfertaM3'
     respuesta_conductor:
       direccion: M3 a M5
       operationId: responderOferta
+    datos_vehiculo_conductor:
+      direccion: M5 a M3
+      metodo: POST
+      ruta: /api/v1/integration/drivers/dispatch-info
+      descripcion: |
+        Tras asignar al conductor, M5 consulta a M3 el vehículo que tiene
+        asociado. M5 valida que el tipo coincida con la solicitud y guarda el
+        identificador del vehículo antes de crear el viaje en M6.
+      cuerpo:
+        conductor_id: UUID
+      respuesta:
+        vehiculo.vehiculo_id: UUID
+        vehiculo.tipo_vehiculo: AUTO o MOTO
   M4:
     fuente: Contrato M4-M5.md (respuesta de M4)
     candidatos:
       direccion: M5 a M4
       metodo: GET
-      ruta: /conductores/cercanos
+      ruta: /api/v1/conductores/cercanos
       descripcion: |
         RF-5.3. Consulta de solo lectura que no reserva a nadie. M4 recibe las
         coordenadas del origen y el tipo de vehículo en la URL, sin las del destino,
@@ -534,8 +546,8 @@ x-integraciones:
         error o un timeout nunca equivale a una lista vacía: M5 registra
         ERROR_INTEGRACION y repite la búsqueda de forma acotada dentro del plazo
         de búsqueda.
-        Los nombres de parámetros que se muestran aquí se deben cotejar con
-        el OpenAPI de M4.
+        Los nombres de parámetros y campos de respuesta coinciden con el
+        OpenAPI vigente de M4.
       parametros_consulta:
         $ref: '#/components/schemas/ConsultaCandidatosM4'
       respuesta:
@@ -543,7 +555,7 @@ x-integraciones:
     reserva_conductor:
       direccion: M5 a M4
       metodo: POST
-      ruta: /reserva
+      ruta: /api/v1/conductores/{conductor_id}/reserva
       descripcion: |
         M5 pide a M4 el bloqueo temporal de un solo conductor, antes de mandarle
         la oferta por M3, siguiendo el orden de cercanía de la lista. M4 no bloquea
@@ -558,10 +570,10 @@ x-integraciones:
     liberar_conductor:
       direccion: M5 a M4
       metodo: POST
-      ruta: a acordar con M4
+      ruta: /api/v1/conductores/{conductor_id}/reserva
       descripcion: |
-        Una llamada por conductor, con el mismo mensaje para todos: solo el
-        conductor_id, sin motivo, sin oferta_id y sin solicitud_id. M5 libera a
+        Una llamada por conductor, con `estado_temporal=LIBERADO` y el
+        `solicitud_id` de la reserva. M5 libera a
         cada conductor una sola vez. De a uno cuando rechaza la oferta o se le
         vence el plazo de respuesta, y a todos los que sigan reservados, el
         ganador incluido, cuando un conductor acepta, vence el tiempo máximo de
@@ -572,6 +584,28 @@ x-integraciones:
         idempotencia. Repetir la liberación no debe tener efectos adicionales.
       datos:
         $ref: '#/components/schemas/LiberacionConductorM4'
+  M6:
+    fuente: Contrato vigente de M6
+    crear_viaje_asignado:
+      direccion: M5 a M6
+      metodo: POST
+      ruta: /trips
+      descripcion: |
+        Después de que M5 confirme la asignación y obtenga de M3 el vehículo,
+        crea el viaje en M6 con la clave idempotente viaje:{solicitudId}. M5
+        devuelve a M3 el id real del viaje que responde M6; si M6 no confirma,
+        M3 recibe un error reintentable y puede repetir la decisión.
+      cuerpo:
+        requestId: solicitud_id
+        clientId: cliente_id
+        driverId: conductor_id
+        vehicleId: vehiculo_id
+        originLatitude: origen.latitud
+        originLongitude: origen.longitud
+        destinationLatitude: destino.latitud
+        destinationLongitude: destino.longitud
+      respuesta:
+        id: tripId
   M7:
     fuente: Propuesta de contrato a M7.md
     estimacion:
@@ -958,48 +992,38 @@ components:
         respondida_en:
           type: string
           format: date-time
-    LoteOfertasM3:
+    OfertaM3:
       description: |
-        Cuerpo de envío de M5 a M3. El vencimiento se comparte entre las
-        ofertas del lote. Cada conductor figura una vez, con su propio
-        oferta_id.
+        Cuerpo de envío individual de M5 a M3. El vencimiento se comparte entre
+        las ofertas creadas para una misma tanda.
       type: object
       additionalProperties: false
       required:
-        - solicitud_id
-        - origen_latitud
-        - origen_longitud
-        - destino_latitud
-        - destino_longitud
-        - tipo_vehiculo
-        - ofertas
-        - vence_en
+        - offerId
+        - driverId
+        - requestId
+        - pickupAddress
+        - destinationAddress
+        - vehicleType
+        - expiresAt
       properties:
-        solicitud_id:
+        offerId:
           $ref: '#/components/schemas/Identificador'
-        origen_latitud:
-          $ref: '#/components/schemas/Latitud'
-        origen_longitud:
-          $ref: '#/components/schemas/Longitud'
-        destino_latitud:
-          $ref: '#/components/schemas/Latitud'
-        destino_longitud:
-          $ref: '#/components/schemas/Longitud'
-        tipo_vehiculo:
+        driverId:
+          $ref: '#/components/schemas/Identificador'
+        requestId:
+          $ref: '#/components/schemas/Identificador'
+        pickupAddress:
+          type: string
+          maxLength: 240
+          example: '-27.451, -58.986'
+        destinationAddress:
+          type: string
+          maxLength: 240
+          example: '-27.465, -58.975'
+        vehicleType:
           $ref: '#/components/schemas/TipoVehiculo'
-        ofertas:
-          type: array
-          minItems: 1
-          items:
-            type: object
-            additionalProperties: false
-            required: [oferta_id, conductor_id]
-            properties:
-              oferta_id:
-                $ref: '#/components/schemas/Identificador'
-              conductor_id:
-                $ref: '#/components/schemas/Identificador'
-        vence_en:
+        expiresAt:
           $ref: '#/components/schemas/VencimientoOferta'
     RespuestaOfertaRequest:
       type: object
@@ -1024,8 +1048,14 @@ components:
           description: Decisión comunicada por M3.
     ResultadoRespuestaOferta:
       type: object
-      required: [repetida]
+      required: [status, tripId, repetida]
       properties:
+        status:
+          type: string
+          enum: [ACCEPTED, REJECTED]
+        tripId:
+          type: [string, 'null']
+          description: Identificador devuelto por M6 cuando la oferta se acepta.
         repetida:
           type: boolean
           description: Verdadero si M5 ya había registrado la misma respuesta para la oferta.
@@ -1044,39 +1074,45 @@ components:
           description: Tipo de vehículo solicitado, con la codificación que espera M4.
     ListaCandidatosM4:
       type: object
-      required: [candidatos]
+      required: [conductores]
       properties:
-        candidatos:
+        conductores:
           type: array
           items:
             type: object
-            required: [conductor_id, distancia_m, tipo_vehiculo]
+            required: [conductor_id, distancia_origen_km, tipo_vehiculo]
             properties:
               conductor_id:
                 allOf:
                   - $ref: '#/components/schemas/Identificador'
                 description: Mismo UUID que utiliza M3 para el conductor.
-              distancia_m:
+              distancia_origen_km:
                 type: number
                 minimum: 0
-                description: Distancia al origen en metros.
+                description: Distancia al origen en kilometros.
               tipo_vehiculo:
                 type: string
                 minLength: 1
     ReservaConductorM4:
       type: object
       additionalProperties: false
-      required: [conductor_id]
+      required: [estado_temporal, solicitud_id]
       properties:
-        conductor_id:
+        estado_temporal:
+          type: string
+          enum: [RESERVADO, LIBERADO]
+        solicitud_id:
           $ref: '#/components/schemas/Identificador'
     LiberacionConductorM4:
-      description: El mismo mensaje para todos los conductores, sin importar la razón de la liberación.
+      description: Actualiza la reserva de esta solicitud a LIBERADO.
       type: object
       additionalProperties: false
-      required: [conductor_id]
+      required: [estado_temporal, solicitud_id]
       properties:
-        conductor_id:
+        estado_temporal:
+          type: string
+          enum: [LIBERADO]
+        solicitud_id:
           $ref: '#/components/schemas/Identificador'
     CancelacionRequest:
       type: object
