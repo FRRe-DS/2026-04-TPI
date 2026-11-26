@@ -55,9 +55,11 @@ info:
       y duración del trayecto. M7 calcula la tarifa a partir del tipo de
       vehículo, la distancia en kilómetros y la duración en minutos enteros.
       M5 muestra `moneda` y `desglose.total` como importe orientativo.
-    - **M3** tambien interviene tras la asignacion: M5 consulta
-      `POST /api/v1/integration/drivers/dispatch-info` y toma
-      `vehiculo.vehiculo_id` y `vehiculo.tipo_vehiculo`.
+    - **M3** recibe cada oferta en `POST /api/v1/integration/m5/offers`.
+      Al recibir la respuesta del conductor, M5 consulta
+      `POST /api/v1/integration/drivers/dispatch-info`, comprueba que siga
+      habilitado y disponible, y toma `vehiculo.vehiculo_id` y
+      `vehiculo.tipo_vehiculo` para crear el viaje en M6.
     - **M6** recibe `POST /trips`, con `requestId` igual a `solicitud_id` y
       `vehicleType` en `AUTO` o `MOTO`. M6 responde 201 al crear y 200 al
       repetir una creacion identica. M5 devuelve a M3 el `id` real del viaje.
@@ -375,6 +377,78 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/v1/offers/{offerId}/driver-response:
+    post:
+      tags: [Ofertas]
+      operationId: registrarRespuestaOfertaM3
+      summary: Recibir de M3 la respuesta del conductor
+      description: |
+        Adaptador del contrato vigente de M3. M5 busca la oferta por offerId,
+        verifica que driverId sea su destinatario y deriva solicitud_id desde
+        el registro persistido. La clave de idempotencia debe repetirse igual
+        en los reintentos de M3.
+      x-required-service-scopes: [m5:offers:respond]
+      parameters:
+        - name: offerId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Identificador'
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [driverId, decision]
+              properties:
+                driverId:
+                  $ref: '#/components/schemas/Identificador'
+                decision:
+                  type: string
+                  enum: [ACCEPTED, REJECTED]
+            example:
+              driverId: 4c4157ea-d150-4807-8db5-9eeb52cf9591
+              decision: ACCEPTED
+      responses:
+        '200':
+          description: Respuesta registrada; en aceptación incluye el viaje creado en M6.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [ACCEPTED, REJECTED]
+                  tripId:
+                    type: string
+                    maxLength: 128
+                    nullable: true
+        '400':
+          description: Cuerpo, identificador o clave de idempotencia inválidos.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Oferta desconocida o no asignada al conductor indicado.
+        '409':
+          description: Oferta ya vencida/respondida o solicitud sin disponibilidad.
+        '410':
+          description: Oferta vencida o cancelada.
+        '503':
+          description: M5 no pudo completar o confirmar temporalmente la asignación.
+
   /api/v1/ofertas/{oferta_id}/responder:
     parameters:
       - $ref: '#/components/parameters/OfertaId'
@@ -532,7 +606,7 @@ x-integraciones:
       respuesta:
         $ref: '#/components/schemas/EstadoCuentaM2'
   M3:
-    fuente: Contrato M3-M5.md
+    fuente: M3/contracts/openapi.yaml y M3/contracts/dependencies/m5-offers.openapi.yaml
     envio_ofertas:
       direccion: M5 a M3
       descripcion: |
@@ -544,18 +618,23 @@ x-integraciones:
         $ref: '#/components/schemas/OfertaM3'
     respuesta_conductor:
       direccion: M3 a M5
-      operationId: responderOferta
-      ruta: /api/v1/ofertas/{oferta_id}/responder
+      operationId: registrarRespuestaOfertaM3
+      ruta: /api/v1/offers/{offerId}/driver-response
       metodo: POST
       scope: m5:offers:respond
+      cuerpo:
+        driverId: UUID
+        decision: ACCEPTED o REJECTED
+      encabezado:
+        Idempotency-Key: UUID estable en cada reintento
     datos_vehiculo_conductor:
       direccion: M5 a M3
       metodo: POST
       ruta: /api/v1/integration/drivers/dispatch-info
       descripcion: |
-        Tras asignar al conductor, M5 consulta a M3 el vehículo que tiene
-        asociado. M5 valida que el tipo coincida con la solicitud y guarda el
-        identificador del vehículo antes de crear el viaje en M6.
+        Tras recibir la aceptación, M5 consulta a M3 el vehículo seleccionado.
+        Comprueba que el conductor siga habilitado y disponible, valida el tipo
+        de vehículo y persiste el identificador antes de crear el viaje en M6.
       cuerpo:
         conductor_id: UUID
       respuesta:

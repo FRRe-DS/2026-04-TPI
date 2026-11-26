@@ -19,6 +19,10 @@ async function procesarCancelacionSolicitud({ solicitudId, motivo = "CANCELADA_P
     deps.ejecutarEnTransaccion(async (tx) => {
       const cerradas = await deps.ofertas.cancelarPendientesDeSolicitud({ solicitudId }, tx);
       await deps.busquedas.cerrar({ solicitudId, estado: EstadoBusqueda.FINALIZADA }, tx);
+      await deps.eventos.registrar(
+        { solicitudId, tipo: TipoEvento.CANCELACION, ocurridoEn: ahora, detalle: motivo },
+        tx
+      );
       for (const c of cerradas) {
         await deps.eventos.registrar(
           {
@@ -27,7 +31,7 @@ async function procesarCancelacionSolicitud({ solicitudId, motivo = "CANCELADA_P
             conductorId: c.conductorId,
             ofertaId: c.ofertaId,
             ocurridoEn: ahora,
-            detalle: motivo,
+            detalle: `Oferta cancelada: ${motivo}`,
           },
           tx
         );

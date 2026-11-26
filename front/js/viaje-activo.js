@@ -96,7 +96,7 @@
     button.disabled = true;
     button.textContent = "Cancelando…";
     try {
-      const response = await fetch(`/api/solicitudes/${encodeURIComponent(solicitud.solicitudId)}/cancelar`, { method: "PATCH" });
+      const response = await fetch(`/api/solicitudes/${encodeURIComponent(solicitud.solicitudId)}/cancelar`, { method: "POST" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "No se pudo cancelar el viaje.");
       solicitud = data.solicitud || data;

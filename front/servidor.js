@@ -380,6 +380,7 @@ http.createServer(async (req, res) => {
 
       const row = await apiRequest('/solicitudes', {
         method: 'POST',
+        headers: { 'Idempotency-Key': req.headers['idempotency-key'] || crypto.randomUUID() },
         body: JSON.stringify({
           idCliente: auth.identidadId,
           origen: body.origen,
@@ -422,7 +423,7 @@ http.createServer(async (req, res) => {
 
   // CANCELAR VIAJE ACTIVO: rol clientes-be.
   const cancelSolicitudMatch = url.pathname.match(/^\/api\/solicitudes\/([^/]+)\/cancelar$/);
-  if (req.method === 'PATCH' && cancelSolicitudMatch) {
+  if (req.method === 'POST' && cancelSolicitudMatch) {
     try {
       const auth = await requireRole(req, 'clientes-be');
       if (auth.error) return json(res, auth.error, { error: auth.error === 403 ? 'Se requiere el rol clientes-be.' : 'Autenticación requerida o configuración de Keycloak incorrecta.' });
@@ -431,7 +432,7 @@ http.createServer(async (req, res) => {
       const propia = solicitudes.find(row => (row.solicitudId || row.idSolicitud) === solicitudId);
       if (!propia) return json(res, 404, { error: 'Solicitud no encontrada.' });
       if ((propia.clienteId || propia.idCliente) !== auth.identidadId) return json(res, 403, { error: 'Solo podés cancelar tus propios viajes.' });
-      const result = await apiRequest(`/solicitudes/${encodeURIComponent(solicitudId)}/cancelar`, { method: 'PATCH' });
+      const result = await apiRequest(`/solicitudes/${encodeURIComponent(solicitudId)}/cancelar`, { method: 'POST' });
       return json(res, 200, { solicitud: { ...mapDbToUi(result), clienteNombre: auth.nombre || auth.username || 'Cliente' } });
     } catch (error) {
       return json(res, error.statusCode || 502, { error: error.message || 'No se pudo cancelar el viaje.' });

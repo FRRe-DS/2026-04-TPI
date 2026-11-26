@@ -18,8 +18,8 @@
 // M3 recibe una oferta por solicitud POST /api/v1/integration/m5/offers.
 // Sus campos de dirección contienen las coordenadas que M5 recibió del mapa.
 //
-// ATENCIÓN: las rutas NO están inventadas. Hay que acordarlas con los grupos de M3, M4 y M6;
-// por eso se pasan por parámetro y no tienen valor por defecto.
+// Las rutas concretas se configuran en src/main.js según los contratos vigentes de M3, M4 y M6;
+// las variables de entorno permiten cambiarlas si esos módulos publican otra versión.
 //
 //   rutas.m3EnviarOfertas()                                 -> string
 //   rutas.m6ConductorAsignado()                             -> string

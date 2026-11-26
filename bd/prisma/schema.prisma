@@ -43,6 +43,7 @@ enum EstadoBusqueda {
 }
 
 enum TipoEvento {
+  SOLICITUD_CREADA
   BUSQUEDA
   OFERTA
   RECHAZO
@@ -103,4 +104,18 @@ model Evento {
   detalle     String?
 
   @@index([solicitudId, ocurridoEn])
+}
+
+// Claves idempotentes de creación: permiten recuperar una solicitud ante un reintento
+// y detectar si el cliente reutilizó la misma clave con datos diferentes.
+model IdempotenciaSolicitud {
+  clave          String
+  operacion      String
+  identidadId    String
+  huellaSolicitud String
+  solicitudId    String
+  creadaEn       DateTime @default(now())
+
+  @@id([clave, operacion, identidadId])
+  @@index([solicitudId])
 }

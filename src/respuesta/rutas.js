@@ -1,23 +1,19 @@
-// Endpoint POST /api/v1/ofertas/:ofertaId/responder (RF-5.5): M3 remite la decisión autenticado por scope.
-// Cuerpo: { solicitud_id, oferta_id, conductor_id, respuesta: "aceptado" | "rechazado" }.
+// M3 responde en POST /api/v1/offers/:offerId/driver-response con su contrato en inglés.
+// Las rutas /ofertas/:ofertaId/{responder,respuesta} se conservan como compatibilidad interna.
 //
 // Es un ORQUESTADOR: no decide nada de negocio. Aplica los controles de seguridad en orden y
 // llama a procesarAceptacion o procesarRechazo; después traduce el resultado a HTTP.
 //
-// Orden (cada paso es más caro que el anterior y no se llega al siguiente si falla):
-//   1) rol CONDUCTOR            -> 403
-//   2) entrada válida           -> 400   (ofertaId UUID y body exactamente los cuatro campos del contrato)
-//   3) la oferta existe         -> 404
-//   4) el token es de su dueño  -> 403
-//   5) los ids del body coinciden con la oferta (oferta_id con la ruta y solicitud_id -> 400;
-//      conductor_id -> 403). Va DESPUÉS del dueño para no revelar datos de ofertas ajenas.
-//   6) aceptar / rechazar       -> 200 / 409 / 410 ...
+// En la ruta M3, M5 obtiene solicitud_id desde la oferta y oculta ofertas ajenas con 404.
+// La aceptación/rechazo sigue pasando por los mismos flujos transaccionales e idempotentes.
 // Cualquier error inesperado va a next(error): el manejador final responde un 500 genérico.
 const express = require("express");
 const { ROLES, errores, asociarSolicitud } = require("../comun");
 const {
   procesarAceptacion,
   esquemaParamsOferta,
+  esquemaParamsOfertaM3,
+  esquemaDecisionM3,
   esquemaRespuestaOferta,
 } = require("../asignacion");
 const { procesarRechazo } = require("./procesarRechazo");
@@ -31,6 +27,51 @@ function crearRouterRespuesta({ deps, requerirRol, requerirScope, validar }) {
     ? requerirScope("m5:offers:respond")
     : requerirRol(ROLES.CONDUCTOR);
 
+  // Adaptador del contrato actual de M3 al modelo interno de respuesta de M5.
+  const responderDesdeM3 = async (req, res, next) => {
+    try {
+      const { offerId } = req.validado.params;
+      const { driverId, decision } = req.validado.body;
+      const claveIdempotencia = req.get("Idempotency-Key");
+      if (!claveIdempotencia || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(claveIdempotencia)) {
+        throw errores.validacion([{ campo: "headers.Idempotency-Key", mensaje: "Idempotency-Key debe ser un UUID" }]);
+      }
+
+      const oferta = await deps.ofertas.obtenerPorId(offerId);
+      // El contrato M3 usa 404 tanto para ofertas inexistentes como ajenas.
+      if (!oferta || oferta.conductorId !== driverId) {
+        throw errores.noEncontrado("Oferta desconocida o no asignada al conductor");
+      }
+      asociarSolicitud(req, oferta.solicitudId);
+
+      const resultado = decision === "ACCEPTED"
+        ? await procesarAceptacion({ ofertaId: offerId, conductorId: driverId }, deps)
+        : await procesarRechazo({ ofertaId: offerId, conductorId: driverId }, deps);
+
+      if (resultado.resultado === "asignada" && !resultado.tripId) {
+        return res.status(503).json({ error: "La asignación quedó registrada, pero M5 no pudo confirmar el viaje en M6. M3 puede reintentar." });
+      }
+      if (resultado.resultado === "asignada") {
+        return res.status(200).json({ status: "ACCEPTED", tripId: resultado.tripId });
+      }
+      if (resultado.resultado === "rechazada") {
+        return res.status(200).json({ status: "REJECTED", tripId: null });
+      }
+
+      return res.status(estadoHttpRespuesta(resultado.resultado)).json(cuerpoHttpRespuesta(resultado));
+    } catch (error) {
+      return next(error);
+    }
+  };
+
+  router.post(
+    "/offers/:offerId/driver-response",
+    autorizarM3,
+    validar({ params: esquemaParamsOfertaM3, body: esquemaDecisionM3 }),
+    responderDesdeM3
+  );
+
+  // Se conservan las rutas previas de M5 para no romper clientes existentes.
   router.post(
     ["/ofertas/:ofertaId/responder", "/ofertas/:ofertaId/respuesta"],
     autorizarM3,
