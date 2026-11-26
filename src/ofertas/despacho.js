@@ -116,18 +116,19 @@ async function enviarTanda({ solicitudId, datosViaje = null }, deps) {
   const datos = datosViaje ?? (await deps.solicitudes.obtenerDatosViaje(solicitudId));
   if (!datos) return { resultado: "solicitud_inexistente" };
 
-  const pendientes = await deps.candidatos.pendientesDeOfertar({ solicitudId });
+  const ronda = busqueda.ronda ?? 1;
+  const pendientes = await deps.candidatos.pendientesDeOfertar({ solicitudId, ronda });
   if (pendientes.length === 0) {
     await evaluarBusquedaAgotada({ solicitudId }, deps);
     return { resultado: "sin_candidatos" };
   }
 
   const { reservados, conflictos, fallidos } = await reservarConductores(
-    { solicitudId, candidatos: pendientes, cantidad: cfg.tamanoTanda },
+    { solicitudId, candidatos: pendientes, cantidad: cfg.tamanoTanda, ronda },
     deps
   );
   if (conflictos.length > 0) {
-    await deps.candidatos.marcarOmitidos({ solicitudId, conductorIds: conflictos, ahora });
+    await deps.candidatos.marcarOmitidos({ solicitudId, ronda, conductorIds: conflictos, ahora });
   }
   // Los que fallaron por un error de M4 no se descartan: quedan para la próxima tanda.
   const restantes = pendientes.length - conflictos.length - reservados.length;
@@ -199,7 +200,8 @@ async function iniciarDespacho({ solicitud }, deps) {
 
   if (await deps.busquedas.obtenerActiva(solicitudId)) return { resultado: "ya_iniciado" };
 
-  const lista = await deps.buscador.buscar(solicitud, { ahora });
+  const ronda = solicitud.ronda ?? 1;
+  const lista = await deps.buscador.buscar(solicitud, { ronda, ahora });
   if (lista.length === 0) {
     const r = await procesarBusquedaAgotada({ solicitudId, motivo: "SIN_CANDIDATOS" }, deps);
     return { resultado: "sin_candidatos", ...r };
@@ -208,7 +210,7 @@ async function iniciarDespacho({ solicitud }, deps) {
   await conReintentoPorDeadlock(() =>
     deps.ejecutarEnTransaccion(async (tx) => {
       await deps.busquedas.crear(
-        { solicitudId, venceEn: sumarMs(ahora, cfg.plazoBusquedaMs), candidatosRestantes: lista.length, proximaTandaEn: ahora },
+        { solicitudId, ronda, venceEn: sumarMs(ahora, cfg.plazoBusquedaMs), candidatosRestantes: lista.length, proximaTandaEn: ahora },
         tx
       );
       await deps.eventos.registrar(

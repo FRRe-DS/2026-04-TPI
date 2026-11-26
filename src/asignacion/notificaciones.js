@@ -28,7 +28,7 @@
 
 const { createHash } = require("node:crypto");
 
-function crearNotificaciones({ clienteM3, clienteM4, clienteM6, rutas, logger, obtenerVehiculoConductor, solicitudes }) {
+function crearNotificaciones({ clienteM3, clienteM4, clienteM6, rutas, logger, obtenerVehiculoConductor, solicitudes, encolarEventosM8 }) {
   if (!clienteM3 || !clienteM4 || !clienteM6) throw new Error("Faltan clienteM3, clienteM4 y/o clienteM6");
   const requeridas = ["m3EnviarOfertas", "m6ConductorAsignado", "m4ReservarConductor", "m4LiberarConductor"];
   if (requeridas.some((nombre) => typeof rutas?.[nombre] !== "function")) {
@@ -77,6 +77,7 @@ function crearNotificaciones({ clienteM3, clienteM4, clienteM6, rutas, logger, o
     async conductorAsignado({ solicitudId, conductorId, ofertaId, solicitud, vehiculoId }) {
       const datosViaje = solicitud ?? await solicitudes?.obtenerDatosViaje?.(solicitudId);
       if (!datosViaje) throw Object.assign(new Error("No se encontraron los datos de la solicitud asignada."), { estado: 503 });
+      const requestIdM6 = datosViaje.requestIdM6 || solicitudId;
       let vehiculo = vehiculoId ? { vehiculoId } : null;
       if (!vehiculo) vehiculo = await obtenerVehiculoConductor?.(conductorId);
       if (!vehiculo?.vehiculoId) throw Object.assign(new Error("M3 no informó el vehículo seleccionado del conductor."), { estado: 503 });
@@ -92,7 +93,7 @@ function crearNotificaciones({ clienteM3, clienteM4, clienteM6, rutas, logger, o
       const viaje = await clienteM6.post(
         rutas.m6ConductorAsignado(),
         {
-          requestId: solicitudId,
+          requestId: requestIdM6,
           ...(datosViaje.reservaId ? { reservationId: datosViaje.reservaId } : {}),
           clientId: datosViaje.clienteId,
           driverId: conductorId,
@@ -103,11 +104,20 @@ function crearNotificaciones({ clienteM3, clienteM4, clienteM6, rutas, logger, o
           destinationLatitude: datosViaje.destino.latitud,
           destinationLongitude: datosViaje.destino.longitud,
         },
-        { claveIdempotencia: `viaje:${solicitudId}` }
+        { claveIdempotencia: `viaje:${requestIdM6}` }
       );
       const tripId = viaje?.id ?? viaje?.tripId;
       if (typeof tripId !== "string" || tripId.length === 0) {
         throw Object.assign(new Error("M6 no devolvió el identificador del viaje."), { estado: 502 });
+      }
+      if (typeof solicitudes?.actualizarViajeM6 === "function") {
+        const actualizado = await solicitudes.actualizarViajeM6({ solicitudId, requestIdM6, viajeId: tripId });
+        if (actualizado?.count === 0) {
+          throw Object.assign(new Error("No se pudo guardar el viaje creado por M6."), { estado: 503 });
+        }
+      }
+      if (typeof encolarEventosM8 === "function") {
+        await encolarEventosM8({ solicitudId, requestIdM6, viajeId: tripId, conductorId, datosViaje });
       }
       return tripId;
     },

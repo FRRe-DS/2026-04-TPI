@@ -40,8 +40,8 @@ info:
        asociado y crea el viaje con `POST /trips` en M6. M6 acepta `AUTO` y
        `MOTO`, y devuelve el identificador del viaje. Si M6 falla, M5 devuelve
        un error reintentable a M3; el mismo `requestId` permite reintentar.
-    8. Las notificaciones a M8 y el consumo de cancelaciones de M6 por RabbitMQ
-       estan pendientes; el backend descrito aqui aun no los implementa.
+    8. M5 consume cancelaciones de M6 por RabbitMQ. Tras crear el viaje en M6,
+       encola en forma durable los eventos de viaje admitidos por M8.
     ### Otras integraciones
 
     - **M1 y M2**. El frontend envía a M5 el token de acceso JWT emitido
@@ -60,12 +60,15 @@ info:
       `POST /api/v1/integration/drivers/dispatch-info`, comprueba que siga
       habilitado y disponible, y toma `vehiculo.vehiculo_id` y
       `vehiculo.tipo_vehiculo` para crear el viaje en M6.
-    - **M6** recibe `POST /trips`, con `requestId` igual a `solicitud_id` y
-      `vehicleType` en `AUTO` o `MOTO`. M6 responde 201 al crear y 200 al
-      repetir una creacion identica. M5 devuelve a M3 el `id` real del viaje.
-      El consumidor de cancelaciones por RabbitMQ aun no esta implementado.
-    - **M8**: las notificaciones de hitos estan documentadas como propuesta,
-      pero aun no estan implementadas en este backend.
+    - **M6** recibe `POST /trips`; `requestId` es único por intento y
+      `vehicleType` es `AUTO` o `MOTO`. M5 consume `TripCancelled` en
+      `movilidad.eventos` / `trips.trip.cancelled`; si requiere redespacho,
+      genera y persiste un nuevo `requestId`.
+    - **M8**: M5 encola `VIAJE_SOLICITADO` y `VIAJE_ASIGNADO` cuando M6 ya
+      devolvió el viaje. El outbox persiste y reintenta los envíos.
+    - **M9**: el callback de resultado tiene reintentos HTTP acotados, pero no
+      cuenta con una cola durable para recuperarlo tras agotar los intentos o
+      reiniciar M5.
     - **M9** envía `reserva_id`, `cliente_id` y el trayecto a M5 al activar
       la reserva. La respuesta contiene los dos identificadores de reserva y
       solicitud y el estado de la solicitud según `Estados.md`. M9 coordina
@@ -187,15 +190,16 @@ paths:
       description: |
         RF-5.2, RF-9.9 y RF-9.10. Entrada propuesta para el servicio M9
         autenticado. M9 envía el cliente_id de la reserva vigente y M5
-        consulta el estado de ese cliente en M2 antes del alta. El sub del
-        JWT de M9 identifica al servicio que activa la reserva.
+        consulta el estado de ese cliente en M2 antes del alta. El token
+        identifica al servicio que activa la reserva; se acepta SERVICIO o
+        reservas-be. No se exige scope para esta operación.
 
         Cada reserva_id origina como máximo una solicitud, incluso ante
         activaciones simultáneas. Un reintento compatible devuelve el mismo
         solicitud_id y su estado actual. Si cambia el cliente o el trayecto de
         una reserva ya activada, M5 responde 409.
       security:
-        - bearerAuth: [SERVICIO]
+        - bearerAuth: [SERVICIO, reservas-be]
       requestBody:
         required: true
         content:
@@ -205,6 +209,7 @@ paths:
             example:
               reserva_id: 81d60c84-d9aa-4f34-9f97-a50a264d2154
               cliente_id: 1d4ed086-70cd-4ef8-a970-20270d7eab8a
+              cliente_email: cliente@example.test
               origen_latitud: -27.451
               origen_longitud: -58.986
               destino_latitud: -27.465
@@ -655,6 +660,9 @@ x-integraciones:
         error o un timeout nunca equivale a una lista vacía: M5 registra
         ERROR_INTEGRACION y repite la búsqueda de forma acotada dentro del plazo
         de búsqueda.
+        M5 solicita `limite=100`, el máximo del contrato, y organiza los
+        candidatos recibidos en tandas. El contrato de M4 no documenta cursor
+        ni paginación para recuperar candidatos adicionales.
         Los nombres de parámetros y campos de respuesta coinciden con el
         OpenAPI vigente de M4.
       parametros_consulta:
@@ -702,14 +710,16 @@ x-integraciones:
       descripcion: |
         Tras confirmar la asignación, M5 obtiene de M3 el vehículo asociado y
         solicita la creación a M6. M6 acepta AUTO/MOTO y usa requestId para
-        idempotencia. M5 devuelve a M3 el id real que responde M6. Si M6 falla,
-        M5 devuelve un error reintentable y M3 puede repetir la decisión.
+        idempotencia. M5 genera y persiste un requestId propio para cada
+        intento; al redespachar genera uno nuevo. M5 devuelve a M3 el id real
+        que responde M6. Si M6 falla, M5 devuelve un error reintentable y M3
+        puede repetir la decisión con el mismo requestId del intento.
       cuerpo:
         $ref: '#/components/schemas/CrearViajeM6Request'
       respuesta:
         $ref: '#/components/schemas/ViajeM6'
       mapeo_campos:
-        solicitud_id: requestId
+        requestIdM6: requestId (UUID persistido por intento; no es solicitud_id)
         cliente_id: clientId
         conductor_id: driverId
         vehiculo_id: vehicleId
@@ -723,13 +733,15 @@ x-integraciones:
       direccion: M6 a RabbitMQ a M5
       mecanismo: RabbitMQ (sin endpoint HTTP en M5)
       descripcion: |
-        Contrato de evento definido por M6. El consumidor de M5 no está
-        implementado en este commit y queda pendiente de integración.
-      exchange: m6.events
+        M5 consume TripCancelled, deduplica por eventId y, si
+        requiresRedispatch=true, crea un nuevo intento con otro requestId para
+        M6 y vuelve a iniciar la búsqueda.
+      exchange: movilidad.eventos
       tipo_exchange: topic
       durable: true
-      routing_key: trip.cancelled
-      cola: a acordar con M6 y el integrador
+      routing_key: trips.trip.cancelled
+      cola: m5.trip.cancelled (durable; declarada por M5)
+      cola_errores: m5.trip.cancelled.dlq
       mensaje:
         $ref: '#/components/schemas/TripCancelledEvent'
   M7:
@@ -760,58 +772,32 @@ x-integraciones:
         `Authorization: Bearer <JWT>` emitido por M1, con rol SERVICIO. El
         `sub` del token nombra al módulo que llama (M5).
       descripcion: |
-        Propuesta pendiente: este backend aun no envia hitos a M8. Cuando se implemente, M5 enviara los avisos a
-        clientes y conductores. M8 registra el evento y responde `202` sin
-        esperar a enviar nada, por lo que no bloquea a M5. Si M8 falla, M5 no
-        revierte la solicitud, la asignación ni el viaje.
+        M5 persiste eventos en un outbox y los reintenta sin bloquear el
+        despacho. Cuando M6 confirma el viaje, M5 envía primero
+        `VIAJE_SOLICITADO` y luego `VIAJE_ASIGNADO`, ambos con el `viajeId`
+        real de M6. Los `eventoId` y cuerpos se conservan entre reintentos.
 
-        Hitos que informa M5 (todos con `origen: M5`):
-        - `VIAJE_SOLICITADO`: al registrar la solicitud. Destinatario: el
-          cliente.
-        - `VIAJE_ASIGNADO`: al confirmar al conductor ganador. M5 no espera a
-          que M6 cree el viaje, por lo que normalmente solo lleva
-          `solicitudId`. Destinatario: el cliente. El conductor se agrega
-          como segundo destinatario solo si M5 dispone de su email; por
-          defecto no se incluye.
-        - `SOLICITUD_CANCELADA`: cuando el cliente cancela antes de la
-          asignación (`cancelarSolicitud`). Destinatario: el cliente. El
-          `motivo` de la cancelación, si lo hay, va en `detalle.motivo`. La
-          cancelación posterior a la asignación la informa M6.
-        - `BUSQUEDA_SIN_CONDUCTOR`: cuando la búsqueda se agota y la solicitud
-          pasa a `sin_disponibilidad`. Destinatario: el cliente.
+        El contrato publicado de M8 permite estos dos tipos y requiere una
+        referencia a viaje, reserva o pago; por eso M5 no envía eventos antes
+        de que exista `viajeId`. `SOLICITUD_CANCELADA` y
+        `BUSQUEDA_SIN_CONDUCTOR` no están en el enum publicado de M8 y no se
+        envían desde M5.
 
-        M5 no informa `VIAJE_CANCELADO`, `VIAJE_ARRIBO_CONDUCTOR`,
-        `VIAJE_INICIADO` ni `VIAJE_FINALIZADO`: los informa M6.
-
-        Identificación: `solicitudId` es el `solicitud_id` de M5, existe
-        desde el alta y es previo al viaje de M6. Cuando M5 ya conoce el
-        `viajeId` que asignó M6, lo envía junto con `solicitudId`. Para
-        solicitudes de una reserva de M9 puede sumarse `reservaId`.
-
-        Idempotencia: `eventoId` es un UUID aleatorio que genera M5 y funciona
-        como clave de idempotencia. Ante un reintento M5 reenvía el mismo
-        `eventoId` con el mismo cuerpo, por lo que debe conservarlo por cada
-        hito. Con el mismo `eventoId` y otro cuerpo, M8 responde `422`.
-
-        Reintentos de M5: ante timeout, error de red, `500` o `503` (se
-        respeta `Retry-After`) repite el envío con el mismo `eventoId` y el
-        mismo cuerpo. Ante `400`, `401`, `403`, `413`, `415` o `422` no
-        reintenta: registra ERROR_INTEGRACION porque el cuerpo o el token
-        requieren corrección. M5 puede enviar `X-Request-Id` (1 a 128
-        caracteres: letras, números, `.`, `_`, `-`) para correlacionar.
+        La implementación de M8 exige `detalle.conductorId` en
+        `VIAJE_ASIGNADO`, aunque su OpenAPI publicado no define ese campo.
+        M5 lo incluye para coincidir con la implementación; falta alinear ese
+        contrato en M8.
       cuerpo:
         $ref: '#/components/schemas/EventoM8Request'
       respuesta_202:
         $ref: '#/components/schemas/EventoM8Recibido'
       respuestas_error: [400, 401, 403, 413, 415, 422, 500, 503]
       mapeo_campos:
-        solicitud_id: solicitudId
-        viaje_id: viajeId (solo cuando M6 ya creó el viaje)
+        viaje_id: viajeId
         reserva_id: reservaId
         cliente_id: destinatarios[].usuarioId (rol CLIENTE)
-        conductor_id: destinatarios[].usuarioId (rol CONDUCTOR, opcional en VIAJE_ASIGNADO, solo si M5 tiene su email)
-        email del JWT de M1 (login): destinatarios[].email
-        motivo (cancelación): detalle.motivo
+        conductor_id: detalle.conductorId (VIAJE_ASIGNADO)
+        email del JWT de M1 o cliente_email de M9: destinatarios[].email cuando esté disponible
         tipo_vehiculo: detalle.tipoVehiculo
         tarifa_estimada.total_estimado: detalle.importe.monto
         tarifa_estimada.moneda: detalle.importe.moneda
@@ -820,48 +806,18 @@ x-integraciones:
         origen: 'siempre "M5"'
       acuerdos_con_m8:
         - |
-          `solicitudId`: campo opcional nuevo de `EventoEntrada`, que M8
-          incorpora a su contrato. Cuando el viaje existe, los eventos llevan
-          `solicitudId` y `viajeId` juntos.
-        - |
-          `SOLICITUD_CANCELADA` y `BUSQUEDA_SIN_CONDUCTOR`: valores nuevos
-          del enum `TipoEvento` de M8, incluidos en el mismo cambio que
-          `solicitudId`.
-        - |
-          Contacto: `telefono` ya es opcional. Alcanza con `usuarioId`, `rol`
-          y `email`.
-        - |
-          `origen` y `destino` de `detalle` son opcionales; M5 los omite por
-          ahora.
-        - |
-          `usuarioId`: es el mismo UUID que M5 maneja como `cliente_id`
-          (compartido con M2) y como `conductor_id` (compartido con M3). M5
-          lo envía tal cual; si M8 o M1 lo cuestionan, se ajusta.
-        - |
-          `eventoId` lo genera M5 y puede ser aleatorio; en un reintento se
-          reenvía el mismo.
+          El `eventoId` lo genera M5 y se persiste junto al cuerpo en el
+          outbox. El mismo evento se reenvía con el mismo identificador.
       pendientes_de_m5:
         - |
-          Guardar el `email` del cliente al crear la solicitud (decisión de
-          implementación de M5). Se toma del login con M1 (claim del JWT;
-          confirmar el nombre del claim) y se usa en todos los eventos
-          posteriores, incluidos `VIAJE_ASIGNADO`, `BUSQUEDA_SIN_CONDUCTOR`
-          y los reintentos, que no ocurren dentro de una llamada del cliente.
-          Con eso queda cubierto el mínimo de los avisos al cliente en
-          viajes inmediatos.
-        - |
-          Solicitudes creadas por M9 (`desde-reserva`, token SERVICIO): el
-          token no es el del cliente y no trae su email. Depende de M9 que lo
-          envíe al activar la reserva. Mientras no lo tenga, M8 deja el aviso
-          al cliente de esas solicitudes en FALLIDA.
+          M9 todavía no envía `cliente_email` al activar una reserva. M5 lo
+          acepta opcionalmente; si falta, el evento lleva `usuarioId` y rol,
+          pero M8 puede no tener un contacto utilizable para entregar el aviso.
       decisiones:
         - |
-          El conductor no es destinatario por defecto en `VIAJE_ASIGNADO`:
-          M5 no tiene su email, porque la respuesta del conductor llega
-          remitida por M3. El conductor ya conoce su asignación por la oferta.
-          M8 solo exige un destinatario, así que no se generan notificaciones
-          fallidas. Si más adelante M3 aporta el email del conductor, se
-          agrega como segundo destinatario (rol CONDUCTOR).
+          M5 avisa al cliente. No incluye al conductor como destinatario
+          porque M5 no dispone de su contacto; `detalle.conductorId` se envía
+          únicamente para que M8 registre el hito de asignación.
 
   M9:
     fuentes: [Propuesta de contrato a M9.md, Estados.md]
@@ -873,8 +829,17 @@ x-integraciones:
         la responsabilidad sobre la reserva y obtiene su tarifa de M7.
         La propuesta menciona el envío de la tarifa a M5. El campo opcional
         tarifa_estimada documenta un formato sujeto a acuerdo con M9.
+        `cliente_email` es opcional; M5 lo usa como contacto del cliente para
+        los eventos enviados a M8. M9 aún no lo incluye en la activación.
         Para los viajes que provienen de una reserva, M5 envía a M6 el
         `reserva_id` como `reservationId` al crear el viaje.
+    callback_despacho:
+      direccion: M5 a M9
+      descripcion: |
+        M5 informa CONFIRMADA o VENCIDA con una clave idempotente y hace
+        reintentos HTTP limitados. No persiste una tarea durable de callback:
+        si todos los intentos fallan, el resultado queda registrado en logs
+        pero no se recupera automáticamente después de reiniciar M5.
 
 components:
   securitySchemes:
@@ -1108,6 +1073,10 @@ components:
           $ref: '#/components/schemas/Longitud'
         tipo_vehiculo:
           $ref: '#/components/schemas/TipoVehiculo'
+        cliente_email:
+          type: string
+          format: email
+          description: Opcional. Contacto del cliente para notificaciones M8; M9 aún no lo envía.
         tarifa_estimada:
           type: object
           additionalProperties: false
@@ -1342,7 +1311,8 @@ components:
     DetalleEventoM8:
       description: |
         Datos que M8 necesita para redactar el aviso. M5 omite origen y destino
-        por ahora (acordado con M8).
+        por ahora. La implementación actual de M8 requiere conductorId para
+        VIAJE_ASIGNADO, aunque su OpenAPI publicado todavía no lo documenta.
       type: object
       additionalProperties: false
       properties:
@@ -1355,10 +1325,10 @@ components:
         tipoVehiculo:
           type: string
           enum: [AUTO, MOTO]
-        motivo:
-          type: string
-          maxLength: 500
-          description: Motivo de la cancelación, si lo hubo (SOLICITUD_CANCELADA).
+        conductorId:
+          allOf:
+            - $ref: '#/components/schemas/Identificador'
+          description: Requerido por la implementación de M8 para VIAJE_ASIGNADO; pendiente de publicar en su contrato.
         importe:
           type: object
           additionalProperties: false
@@ -1373,12 +1343,11 @@ components:
               description: Código ISO 4217.
     EventoM8Request:
       description: |
-        Cuerpo de POST /api/v1/eventos de M8, restringido a los hitos que
-        informa M5. Usa los nombres de campo de M8, que acepta `solicitudId`,
-        `SOLICITUD_CANCELADA` y `BUSQUEDA_SIN_CONDUCTOR`.
+        Cuerpo de POST /api/v1/eventos de M8 para los tipos que su contrato
+        publicado acepta y que M5 emite cuando ya conoce el viaje.
       type: object
       additionalProperties: false
-      required: [eventoId, tipo, origen, ocurridoEn, solicitudId, destinatarios]
+      required: [eventoId, tipo, origen, ocurridoEn, viajeId, destinatarios]
       properties:
         eventoId:
           allOf:
@@ -1386,21 +1355,17 @@ components:
           description: UUID aleatorio generado por M5. Clave de idempotencia; en un reintento se reenvía el mismo.
         tipo:
           type: string
-          enum: [VIAJE_SOLICITADO, VIAJE_ASIGNADO, SOLICITUD_CANCELADA, BUSQUEDA_SIN_CONDUCTOR]
+          enum: [VIAJE_SOLICITADO, VIAJE_ASIGNADO]
         origen:
           type: string
           enum: [M5]
         ocurridoEn:
           type: string
           format: date-time
-        solicitudId:
-          allOf:
-            - $ref: '#/components/schemas/Identificador'
-          description: solicitud_id de M5. Existe desde el alta y es previo al viaje. M5 lo envía en todos sus eventos.
         viajeId:
           allOf:
             - $ref: '#/components/schemas/Identificador'
-          description: Id del viaje asignado por M6. Solo cuando el viaje ya existe; entonces va junto con solicitudId.
+          description: Id real del viaje asignado por M6.
         reservaId:
           allOf:
             - $ref: '#/components/schemas/Identificador'
@@ -1418,13 +1383,14 @@ components:
         tipo: VIAJE_ASIGNADO
         origen: M5
         ocurridoEn: '2026-11-22T15:30:00Z'
-        solicitudId: 550e8400-e29b-41d4-a716-446655440000
+        viajeId: 550e8400-e29b-41d4-a716-446655440000
         destinatarios:
           - usuarioId: a3e4d8c2-75b1-4f92-8b12-456789abcdef
             rol: CLIENTE
             email: cliente@ejemplo.com
         detalle:
           tipoVehiculo: AUTO
+          conductorId: 59d44b71-61a1-465d-9f2b-845d3a9c7003
     EventoM8Recibido:
       description: Respuesta 202 de M8.
       type: object
@@ -1690,44 +1656,70 @@ components:
           $ref: '#/components/schemas/EstadoViajeM6'
     TripCancelledPayload:
       type: object
-      required: [requestId, clientId, driverId, cancelledBy, reason, previousState, requiresRedispatch]
+      required:
+        - tripId
+        - tripVersion
+        - requestId
+        - reservationId
+        - clientId
+        - driverId
+        - vehicleType
+        - cancelledBy
+        - reason
+        - previousState
+        - requiresRedispatch
+        - createdAt
+        - arrivedAt
+        - startedAt
+        - cancelledAt
       properties:
+        tripId:
+          $ref: '#/components/schemas/Identificador'
+        tripVersion:
+          type: integer
+          minimum: 1
         requestId:
           allOf:
             - $ref: '#/components/schemas/Identificador'
-          description: Solicitud de M5 que originó el viaje.
+          description: Identificador M6 del intento de viaje actual.
+        reservationId:
+          oneOf:
+            - $ref: '#/components/schemas/Identificador'
+            - type: 'null'
         clientId:
           $ref: '#/components/schemas/Identificador'
         driverId:
           $ref: '#/components/schemas/Identificador'
+        vehicleType:
+          $ref: '#/components/schemas/TipoVehiculo'
         cancelledBy:
           type: string
-          enum: [CLIENT, DRIVER]
-          description: Quién canceló. Valores a cotejar con el OpenAPI de M6.
+          enum: [CLIENT, DRIVER, OPERATOR]
         reason:
           type: string
-          description: |
-            Motivo informado por M6, por ejemplo VEHICLE_PROBLEM o
-            CLIENT_NO_SHOW. Con CLIENT_NO_SHOW no corresponde redespachar.
-            Lista completa según el OpenAPI de M6.
         previousState:
           $ref: '#/components/schemas/EstadoViajeM6'
         requiresRedispatch:
           type: boolean
-          description: |
-            Indica si la solicitud debería volver al despacho (RF-6.7). Con
-            false M5 no inicia una nueva búsqueda.
-        secondsSinceCreation:
-          type: integer
-          minimum: 0
-          description: Segundos transcurridos entre la creación del viaje y la cancelación.
+          description: Si es true, M5 inicia otro intento de búsqueda.
+        createdAt:
+          type: string
+          format: date-time
+        arrivedAt:
+          type: [string, 'null']
+          format: date-time
+        startedAt:
+          type: [string, 'null']
+          format: date-time
+        cancelledAt:
+          type: string
+          format: date-time
     TripCancelledEvent:
       description: |
-        Evento publicado por M6 en el exchange m6.events con routing key
-        trip.cancelled. Estructura EventEnvelope + TripCancelledPayload del
-        OpenAPI de M6. M5 deduplica por eventId.
+        Sobre común publicado por M6 en movilidad.eventos con routing key
+        trips.trip.cancelled. M5 deduplica por eventId.
       type: object
-      required: [eventId, eventType, eventVersion, occurredAt, tripId, payload]
+      required: [eventId, eventType, eventVersion, occurredAt, producer, correlationId, payload]
       properties:
         eventId:
           allOf:
@@ -1742,8 +1734,10 @@ components:
         occurredAt:
           type: string
           format: date-time
-        tripId:
-          $ref: '#/components/schemas/Identificador'
+        producer:
+          type: string
+        correlationId:
+          type: string
         payload:
           $ref: '#/components/schemas/TripCancelledPayload'
       example:
@@ -1751,16 +1745,24 @@ components:
         eventType: TripCancelled
         eventVersion: 1
         occurredAt: '2026-11-21T19:00:00Z'
-        tripId: 2c1327e0-3b45-45e2-930c-20c40a9b5004
+        producer: M6
+        correlationId: f7a1b9d0-6e32-4c50-91bb-205c9168a111
         payload:
+          tripId: 2c1327e0-3b45-45e2-930c-20c40a9b5004
+          tripVersion: 2
           requestId: f7a1b9d0-6e32-4c50-91bb-205c9168a111
+          reservationId: null
           clientId: 48be0131-941f-42b7-a6fd-c9d8251f7002
           driverId: 59d44b71-61a1-465d-9f2b-845d3a9c7003
+          vehicleType: AUTO
           cancelledBy: DRIVER
           reason: VEHICLE_PROBLEM
           previousState: PENDING_ARRIVAL
           requiresRedispatch: true
-          secondsSinceCreation: 180
+          createdAt: '2026-11-21T18:57:00Z'
+          arrivedAt: null
+          startedAt: null
+          cancelledAt: '2026-11-21T19:00:00Z'
     Problema:
       type: object
       required: [type, title, status]

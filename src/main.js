@@ -23,8 +23,12 @@ const { iniciarDespacho } = require("./ofertas/despacho");
 const { iniciarJobTandas } = require("./ofertas/jobTandas");
 const { iniciarJobVencimientos } = require("./respuesta/jobVencimientos");
 const { procesarCancelacionSolicitud } = require("./asignacion/procesarCancelacion");
+const { procesarCancelacionM6 } = require("./integraciones/m6Cancelaciones");
+const { iniciarConsumidorM6 } = require("./integraciones/m6Consumer");
+const { crearOutboxM8 } = require("./integraciones/m8Outbox");
 const { crearRouterRespuesta } = require("./respuesta/rutas");
 const { construirIdentidad, autenticar, requerirRol, requerirScope } = require("./comun/autenticacion");
+const { obtenerTokenServicio } = require("./comun/tokenServicio");
 const { TipoEvento } = require("./comun/estados");
 
 const PUERTO = Number(process.env.PORT) || 3001;
@@ -107,6 +111,10 @@ function validarPunto(punto, nombre) {
   return { lat, lng };
 }
 
+function emailValido(valor) {
+  return typeof valor === "string" && valor.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor);
+}
+
 // Construye los adaptadores que conectan las operaciones de despacho con Prisma.
 // Los métodos condicionales de solicitud son los que evitan asignar dos conductores a la vez.
 function crearPersistencia(prisma) {
@@ -129,7 +137,13 @@ function crearPersistencia(prisma) {
       if (!fila) return null;
       return {
         clienteId: fila.idCliente,
+        clienteEmail: fila.emailCliente,
         reservaId: fila.reservaId,
+        requestIdM6: fila.requestIdM6 || fila.idSolicitud,
+        viajeId: fila.viajeId,
+        costo: fila.costo,
+        moneda: fila.moneda,
+        creadaEn: fila.creadaEn,
         origen: { latitud: fila.origenLat, longitud: fila.origenLng },
         destino: { latitud: fila.destinoLat, longitud: fila.destinoLng },
         tipoVehiculo: fila.tipoVehiculo,
@@ -169,13 +183,23 @@ function crearPersistencia(prisma) {
       where: { estado: "buscando" },
       orderBy: { creadaEn: "asc" },
       take: lote,
-      select: { idSolicitud: true, origenLat: true, origenLng: true, destinoLat: true, destinoLng: true, tipoVehiculo: true },
+      select: {
+        idSolicitud: true, origenLat: true, origenLng: true, destinoLat: true, destinoLng: true,
+        tipoVehiculo: true, intentoDespacho: true,
+      },
     }),
     // Completa el vehículo asociado al conductor ganador sin alterar la asignación ya confirmada.
     actualizarVehiculoAsignado: async ({ solicitudId, conductorId, vehiculoId }) => {
       const resultado = await prisma.solicitud.updateMany({
         where: { idSolicitud: solicitudId, conductorId, estado: "asignada" },
         data: { vehiculo_id: vehiculoId },
+      });
+      return { count: resultado.count };
+    },
+    actualizarViajeM6: async ({ solicitudId, requestIdM6, viajeId }) => {
+      const resultado = await prisma.solicitud.updateMany({
+        where: { idSolicitud: solicitudId, requestIdM6, estado: "asignada" },
+        data: { viajeId },
       });
       return { count: resultado.count };
     },
@@ -186,11 +210,11 @@ function crearPersistencia(prisma) {
     // Busca la ronda activa de una solicitud.
     obtenerActiva: (solicitudId, tx) => (tx ?? prisma).busqueda.findFirst({
       where: { solicitudId, estado: "activa" },
-      select: { busquedaId: true, venceEn: true, candidatosRestantes: true, proximaTandaEn: true },
+      select: { busquedaId: true, ronda: true, venceEn: true, candidatosRestantes: true, proximaTandaEn: true },
     }),
     // Registra una nueva ronda con su vencimiento y la hora de la próxima tanda.
-    crear: ({ solicitudId, venceEn, candidatosRestantes, proximaTandaEn }, tx) => (tx ?? prisma).busqueda.create({
-      data: { solicitudId, venceEn, candidatosRestantes, proximaTandaEn },
+    crear: ({ solicitudId, ronda = 1, venceEn, candidatosRestantes, proximaTandaEn }, tx) => (tx ?? prisma).busqueda.create({
+      data: { solicitudId, ronda, venceEn, candidatosRestantes, proximaTandaEn },
     }),
     // Reclama la tanda con una actualización condicional para evitar envíos duplicados.
     reclamarTanda: async ({ solicitudId, ahora, proximaTandaEn }, tx) => {
@@ -256,6 +280,15 @@ function crearDependencias(prisma) {
   const m7 = process.env.M7_URL
     ? crearClienteHttp({ baseUrl: process.env.M7_URL, tokenPorDefecto: process.env.M7_TOKEN, timeoutMs: 3000, reintentos: 2, logger })
     : null;
+  const m9 = crearClienteHttp({ baseUrl: process.env.M9_URL || "http://localhost:8089", timeoutMs: 3000, reintentos: 2, logger });
+  const m8Outbox = process.env.M8_URL
+    ? crearOutboxM8({
+      prisma,
+      clienteM8: crearClienteHttp({ baseUrl: process.env.M8_URL, timeoutMs: 3000, reintentos: 0, logger }),
+      obtenerToken: obtenerTokenServicio,
+      logger,
+    })
+    : null;
   const rutas = {
     m3EnviarOfertas: () => process.env.M3_RUTA_ENVIAR_OFERTAS || "/api/v1/integration/m5/offers",
     m6ConductorAsignado: () => process.env.M6_RUTA_CREAR_VIAJE || "/trips",
@@ -263,6 +296,19 @@ function crearDependencias(prisma) {
     m4LiberarConductor: ({ conductorId }) => `/api/v1/conductores/${encodeURIComponent(conductorId)}/reserva`,
   };
   const persistencia = crearPersistencia(prisma);
+  const notificarResultadoReserva = async ({ solicitudId, resultado, fecha }) => {
+    const viaje = await persistencia.solicitudes.obtenerDatosViaje(solicitudId);
+    if (!viaje?.reservaId) return { omitido: true };
+    const token = await obtenerTokenServicio();
+    const claveIdempotencia = crypto.createHash("sha256")
+      .update(`${viaje.reservaId}:${solicitudId}:${resultado}`)
+      .digest("hex");
+    return m9.post(
+      `/reservas/${encodeURIComponent(viaje.reservaId)}/despacho`,
+      { solicitud_id: solicitudId, resultado, fecha: fecha.toISOString() },
+      { token, claveIdempotencia }
+    );
+  };
   const notificaciones = crearNotificaciones({
     clienteM3: m3,
     clienteM4: m4,
@@ -285,6 +331,9 @@ function crearDependencias(prisma) {
       };
     },
     solicitudes: persistencia.solicitudes,
+    encolarEventosM8: process.env.M8_URL
+      ? async (datos) => m8Outbox.encolarEventosViaje(datos)
+      : undefined,
   });
   const buscador = crearBuscadorCandidatos({
     clienteM4: {
@@ -293,6 +342,7 @@ function crearDependencias(prisma) {
           origen_latitud: String(pedido.origen_latitud),
           origen_longitud: String(pedido.origen_longitud),
           tipo_vehiculo: String(pedido.tipo_vehiculo),
+          limite: String(pedido.limite),
         });
         return m4.get(`${process.env.M4_RUTA_BUSCAR || "/api/v1/conductores/cercanos"}?${query}`);
       },
@@ -303,6 +353,8 @@ function crearDependencias(prisma) {
   const deps = {
     ...persistencia,
     notificaciones,
+    notificarResultadoReserva,
+    outboxM8: m8Outbox,
     buscador,
     cacheOfertas: { eliminar: async () => {} },
     logger,
@@ -497,6 +549,9 @@ function crearApp({ prisma, deps, verificador, estimarTarifa, validarCliente }) 
       const huellaSolicitud = crypto.createHash("sha256").update(JSON.stringify({
         idCliente: String(idCliente), origen: origenValidado, destino: destinoValidado, tipoVehiculo,
       })).digest("hex");
+      const emailCliente = req.identidad?.email ||
+        (req.esInterno && typeof body.cliente_email === "string" ? body.cliente_email : null);
+      const requestIdM6 = crypto.randomUUID();
       const claveIdempotencia = { clave, operacion, identidadId: String(idCliente) };
       const previa = await prisma.idempotenciaSolicitud.findUnique({ where: { clave_operacion_identidadId: claveIdempotencia } });
       if (previa) {
@@ -526,10 +581,12 @@ function crearApp({ prisma, deps, verificador, estimarTarifa, validarCliente }) 
           }
           const fila = await tx.solicitud.create({ data: {
             idCliente: String(idCliente),
+            emailCliente: emailValido(emailCliente) ? emailCliente : null,
             origenLat: origenValidado.lat, origenLng: origenValidado.lng,
             destinoLat: destinoValidado.lat, destinoLng: destinoValidado.lng,
             tipoVehiculo, vehiculo_id: null, costo, moneda: tarifa.moneda || "ARS",
-            tipoActivacion: "Inmediata", reservaId: null, estado: "pendiente",
+            tipoActivacion: "Inmediata", reservaId: null, requestIdM6, intentoDespacho: 1,
+            viajeId: null, estado: "pendiente",
           } });
           await tx.idempotenciaSolicitud.create({ data: {
             ...claveIdempotencia, huellaSolicitud, solicitudId: fila.idSolicitud,
@@ -557,6 +614,7 @@ function crearApp({ prisma, deps, verificador, estimarTarifa, validarCliente }) 
         origen: { latitud: solicitud.origenLat, longitud: solicitud.origenLng },
         destino: { latitud: solicitud.destinoLat, longitud: solicitud.destinoLng },
         tipoVehiculo,
+        ronda: solicitud.intentoDespacho ?? 1,
       }, req.log);
       return res.status(repetida ? 200 : 201).json(mapSolicitud(solicitud));
     } catch (error) {
@@ -566,7 +624,7 @@ function crearApp({ prisma, deps, verificador, estimarTarifa, validarCliente }) 
   });
 
   // RF-5.2: recibe de M9 una reserva activada. Solo acepta tokens de servicio autorizados.
-  app.post("/solicitudes/desde-reserva", autenticar(verificador), requerirRol("SERVICIO"), async (req, res, next) => {
+  app.post("/solicitudes/desde-reserva", autenticar(verificador), requerirRol("SERVICIO", "reservas-be"), async (req, res, next) => {
     try {
       const body = req.body || {};
       const idCliente = String(body.cliente_id || "").trim();
@@ -574,10 +632,12 @@ function crearApp({ prisma, deps, verificador, estimarTarifa, validarCliente }) 
       const origenRaw = { lat: Number(body.origen_latitud), lng: Number(body.origen_longitud) };
       const destinoRaw = { lat: Number(body.destino_latitud), lng: Number(body.destino_longitud) };
       const reservaId = String(body.reserva_id || "").trim();
+      const emailCliente = body.cliente_email == null ? null : String(body.cliente_email).trim();
       if (!idCliente || !reservaId || !["AUTO", "MOTO"].includes(tipoVehiculo) ||
           ![origenRaw.lat, origenRaw.lng, destinoRaw.lat, destinoRaw.lng].every(Number.isFinite)) {
         return res.status(400).json({ error: "El cuerpo de activación de reserva está incompleto o es inválido." });
       }
+      if (emailCliente && !emailValido(emailCliente)) return res.status(400).json({ error: "cliente_email debe ser una dirección válida." });
       const origen = validarPunto(origenRaw, "origen");
       const destino = validarPunto(destinoRaw, "destino");
       const activarExistente = async (existente) => {
@@ -600,10 +660,11 @@ function crearApp({ prisma, deps, verificador, estimarTarifa, validarCliente }) 
       }
       const solicitud = await prisma.$transaction(async (tx) => {
         const fila = await tx.solicitud.create({ data: {
-          idCliente, origenLat: origen.lat, origenLng: origen.lng,
+          idCliente, emailCliente, origenLat: origen.lat, origenLng: origen.lng,
           destinoLat: destino.lat, destinoLng: destino.lng,
           tipoVehiculo, vehiculo_id: null, costo, moneda: tarifa.moneda || "ARS",
-          tipoActivacion: "Reserva", reservaId, estado: "pendiente",
+          tipoActivacion: "Reserva", reservaId, requestIdM6: crypto.randomUUID(),
+          intentoDespacho: 1, viajeId: null, estado: "pendiente",
         } });
         await tx.evento.create({ data: {
           solicitudId: fila.idSolicitud, tipo: TipoEvento.SOLICITUD_CREADA, ocurridoEn: new Date(),
@@ -617,6 +678,7 @@ function crearApp({ prisma, deps, verificador, estimarTarifa, validarCliente }) 
         origen: { latitud: solicitud.origenLat, longitud: solicitud.origenLng },
         destino: { latitud: solicitud.destinoLat, longitud: solicitud.destinoLng },
         tipoVehiculo,
+        ronda: solicitud.intentoDespacho ?? 1,
       }, req.log);
       return res.status(201).json({ reserva_id: reservaId, solicitud_id: solicitud.idSolicitud, estado: solicitud.estado });
     } catch (error) {
@@ -776,6 +838,20 @@ async function iniciarServidor() {
     iniciarJobTandas({ deps, logger }),
     iniciarJobVencimientos({ deps, logger }),
   ];
+  const trabajoM8 = deps.outboxM8?.iniciar();
+  if (!process.env.M8_URL) logger.warn("M8_URL no está configurada; los eventos de viaje no se enviarán a M8");
+  const consumidorM6 = process.env.M6_RABBITMQ_URL
+    ? iniciarConsumidorM6({
+      url: process.env.M6_RABBITMQ_URL,
+      logger,
+      procesarEvento: (evento) => procesarCancelacionM6(evento, {
+        prisma,
+        logger,
+        alRedespachar: (solicitud) => app.locals.despacharSolicitud(solicitud, logger),
+      }),
+    })
+    : null;
+  if (!consumidorM6) logger.warn("M6_RABBITMQ_URL no está configurada; no se consumirán cancelaciones de M6");
 
   // Reintenta despachos que quedaron en estado BUSCANDO si M4 no estuvo disponible al crearlos.
   const recuperarDespachos = setInterval(async () => {
@@ -789,6 +865,7 @@ async function iniciarServidor() {
             origen: { latitud: fila.origenLat, longitud: fila.origenLng },
             destino: { latitud: fila.destinoLat, longitud: fila.destinoLng },
             tipoVehiculo: fila.tipoVehiculo,
+            ronda: fila.intentoDespacho ?? 1,
           }, logger);
         } catch (error) {
           logger.warn({ err: error, solicitudId: fila.idSolicitud }, "se reintentará iniciar el despacho");
@@ -801,12 +878,14 @@ async function iniciarServidor() {
   const cerrar = async () => {
     clearInterval(recuperarDespachos);
     trabajos.forEach((trabajo) => trabajo.detener());
+    trabajoM8?.detener();
+    await consumidorM6?.detener();
     await new Promise((resolve) => server.close(resolve));
     await prisma.$disconnect();
   };
   process.once("SIGINT", cerrar);
   process.once("SIGTERM", cerrar);
-  return { app, server, prisma, deps, cerrar };
+  return { app, server, prisma, deps, consumidorM6, cerrar };
 }
 
 // Verifica los JWT de Keycloak con sus claves públicas remotas y extrae identidad, roles y conductor.
@@ -823,6 +902,7 @@ async function crearVerificadorKeycloak() {
     claimRoles: process.env.JWT_CLAIM_ROLES || "realm_access.roles",
     claimScopes: process.env.JWT_CLAIM_SCOPES || "scope",
     claimConductor: process.env.JWT_CLAIM_CONDUCTOR || "conductor_id",
+    claimEmail: process.env.JWT_CLAIM_EMAIL || "email",
   };
   return async (token) => {
     try {

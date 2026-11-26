@@ -27,12 +27,14 @@ function construirIdentidad(claims, cfg) {
     : String(brutosScopes || "").split(/\s+/).filter(Boolean);
 
   const conductor = cfg.claimConductor ? leerClaim(claims, cfg.claimConductor) : null;
+  const email = cfg.claimEmail ? leerClaim(claims, cfg.claimEmail) : null;
 
   return Object.freeze({
     identidadId: String(identidadId),
     roles,
     scopes,
     conductorId: conductor ? String(conductor) : null,
+    ...(typeof email === "string" && email.length > 0 ? { email } : {}),
   });
 }
 

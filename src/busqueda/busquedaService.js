@@ -55,6 +55,7 @@ function construirPedidoM4(solicitud) {
     origen_latitud: origen.latitud,
     origen_longitud: origen.longitud,
     tipo_vehiculo: solicitud.tipoVehiculo ?? solicitud.tipoVehiculoRequerido,
+    limite: 100,
   };
 }
 

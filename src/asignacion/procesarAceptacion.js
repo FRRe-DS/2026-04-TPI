@@ -158,6 +158,11 @@ async function procesarAceptacion({ ofertaId, conductorId }, deps) {
   await intentar("liberarConductores", () =>
     liberarCandidatosPendientes({ solicitudId, conOferta: [{ conductorId }, ...canceladas] }, deps)
   );
+  if (typeof deps.notificarResultadoReserva === "function") {
+    await intentar("resultadoReservaM9", () =>
+      deps.notificarResultadoReserva({ solicitudId, resultado: "CONFIRMADA", fecha: ahora })
+    );
+  }
 
   return {
     resultado: R.ASIGNADA,
