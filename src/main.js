@@ -15,6 +15,7 @@ const { PrismaMariaDb } = require("@prisma/adapter-mariadb");
 
 const { crearLogger } = require("./comun/logger");
 const { crearClienteHttp } = require("./comun/clienteHttp");
+const { obtenerTokenM2 } = require("./comun/tokenM2");
 const { crearRepositorioCandidatos } = require("./busqueda/repositorioCandidatos");
 const { crearRepositorioOfertas, crearEjecutarEnTransaccion } = require("./respuesta/repositorioOfertas");
 const { crearBuscadorCandidatos } = require("./busqueda/busquedaService");
@@ -271,7 +272,7 @@ function crearPersistencia(prisma) {
 // M2 valida clientes; M3, M4 y M6 participan del despacho; M7 calcula tarifas cuando se solicita.
 function crearDependencias(prisma) {
   const m2 = process.env.M2_URL
-    ? crearClienteHttp({ baseUrl: process.env.M2_URL, tokenPorDefecto: process.env.M2_TOKEN, timeoutMs: 3000, reintentos: 2, logger })
+    ? crearClienteHttp({ baseUrl: process.env.M2_URL, tokenPorDefecto: obtenerTokenM2, timeoutMs: 3000, reintentos: 2, logger })
     : null;
   if (!m2) throw new Error("M2_URL debe configurarse para validar el estado de la cuenta antes del alta");
   const m3 = crearClienteHttp({ baseUrl: process.env.M3_URL, tokenPorDefecto: process.env.M3_TOKEN, timeoutMs: 3000, reintentos: 2, logger });

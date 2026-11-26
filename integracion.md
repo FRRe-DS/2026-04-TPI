@@ -9,12 +9,12 @@
 | Módulo | Hecho en M5 | Estado actual y pendiente |
 |---|---|---|
 | M1 / Keycloak | M5 valida JWT y puede obtener tokens M2M para sus llamadas de servicio. | Falta comprobar configuración de roles, scopes, emisor y secretos en el entorno real. |
-| M2 | M5 consulta el estado de cuenta antes de crear/activar una solicitud. | Contrato revisado; falta configurar el modo/token y probar conectividad real. |
+| M2 | M5 consulta el estado de cuenta antes de crear/activar una solicitud. | En modo HS256 local M5 genera y renueva el token en memoria; ambos contenedores deben compartir clave, emisor y audiencia. En modo Keycloak se necesitan credenciales M2M. Falta probar conectividad real. |
 | M3 | M5 envía ofertas y consulta los datos de despacho del conductor ganador. | En una repetición todavía vuelve a consultar el vehículo en M3 en vez de reutilizar el guardado en M5. |
 | M4 | M5 consulta, ordena y procesa candidatos por tandas; solicita hasta 100. | No hay paginación documentada para superar ese límite; falta validar reservas/liberaciones con M4 real. |
 | M6 | M5 crea viajes y consume eventos de cancelación; maneja redespacho con otro `requestId`. | Código y pruebas enfocados listos; falta probar con M6 y RabbitMQ desplegados. |
 | M7 | M5 solicita estimaciones de tarifa usando ruta y unidades acordadas. | Falta prueba integrada; la validación del scope `tarifas:read` no coincide con la implementación M7 revisada. |
-| M8 | M5 persiste y reintenta los eventos de viaje admitidos por M8. | Falta prueba integrada y alinear `detalle.conductorId` con el contrato publicado; eventos agotados quedan `FALLIDA`. |
+| M8 | M5 persiste y reintenta los eventos de viaje admitidos por M8, usando solo campos publicados. | Falta prueba integrada; eventos agotados quedan `FALLIDA`. |
 | M9 | M5 acepta activaciones de reserva y envía resultados de despacho. | Callback con reintentos HTTP limitados, pero sin recuperación durable; M9 no envía el email opcional. |
 
 ## Detalle por integración
@@ -22,7 +22,7 @@
 ### M1 / Keycloak — autenticación — **parcial**
 
 - M5 valida identidad/autorización mediante JWT y usa tokens de servicio para llamadas entre módulos.
-- La configuración local de ejemplo deja vacías credenciales como `M2_TOKEN`, `M3_TOKEN`, `M4_TOKEN`, `M6_TOKEN` y `M7_TOKEN`; el despliegue debe suministrar tokens válidos con los roles/scopes que exige cada servicio.
+- `M2_TOKEN` puede quedar vacío en el modo HS256 local: M5 firma y renueva en memoria un token `SERVICIO` corto usando la configuración compartida con M2. Los tokens estáticos de M3, M4, M6 y M7 siguen necesitando configuración hasta que cada integración use un proveedor M2M.
 - El token interno de M5 y las rutas de servicio tienen mecanismos de autorización propios. Hay que mantener coherentes la configuración de Keycloak y las políticas de cada módulo.
 - **Pendiente:** comprobar los roles/scopes efectivos de cada cliente de servicio y definir cómo se renuevan/rotan los tokens. La presencia de un realm compartido no confirma por sí sola que las credenciales desplegadas sean válidas.
 
@@ -32,15 +32,10 @@
 - La implementación del Grupo 17 deriva permisos del contrato compartido. El endpoint admite `CLIENTE`, `OPERADOR` o `SERVICIO`; en modo `jwks` exige además el scope `clientes.estado:read`. La respuesta incluye `estado` y `bloqueosVigentes`; M5 solo permite continuar si `estado` es `ACTIVO`. Si el perfil no existe (404), M5 devuelve el error de cliente sin perfil.
 - La imagen/compose del Grupo 17 publica M2 en el puerto `8082` por defecto. Desde el backend M5 ejecutado en la misma computadora, usar `M2_URL=http://localhost:8082`. Si M5 corre dentro de otro contenedor, `localhost` no apunta al host ni al contenedor M2: ambos deben compartir una red Docker y M5 debe usar el nombre DNS del servicio M2, por ejemplo `http://m2:8082`.
 - `.env.example` de M5 estaba configurado con el puerto `3002`, que no coincide con el puerto publicado por M2. Se corrigió a `8082`; al usar un `.env` local ya creado, actualizarlo también.
-- **Token de desarrollo sencillo:** el `ejemplo.env` de M2 arranca en `M2_MODO_TOKENS=hs256`. En ese modo se puede generar un token compatible directamente desde el contenedor M2 (no hace falta copiar un access token de Keycloak):
-
-  ```bash
-  docker compose exec -T m2 node dist/herramientas/token.js --sub m5-solicitudes --roles SERVICIO
-  ```
-
-  Copiar la salida completa en `M2_TOKEN` del entorno del backend M5. El `sub` identifica al servicio llamante y puede ser `m5-solicitudes`. M2 y M5 deben estar usando los mismos valores de desarrollo de emisor, audiencia y clave que trae `ejemplo.env`; M5 envía el token como `Authorization: Bearer ...`. El token generado dura una hora por defecto. Reiniciar M5 después de editar su `.env`.
+- **Token de desarrollo automático:** si `M2_TOKEN` está vacío y `M2_MODO_TOKENS=hs256`, M5 genera en memoria un JWT HS256 con rol `SERVICIO`, `sub=m5-solicitudes`, vencimiento de 60 segundos y lo renueva antes de usar uno vencido. Configurar en M5 la misma `M2_CLAVE_TOKENS`, `M2_EMISOR_TOKENS` y `M2_AUDIENCIA_TOKENS` que M2. En Docker ambos servicios deben compartir red; M5 usa `M2_URL=http://m2:8082`.
 - Si M2 se levanta con `ejemplo-keycloak.env` (`M2_MODO_TOKENS=jwks`), el token HS256 anterior no sirve. En ese modo `M2_TOKEN` debe ser un JWT RS256 emitido por el Keycloak configurado para M2, con rol `SERVICIO` y scope `clientes.estado:read`; un token inventado o emitido por otro realm no valida. El realm de M2 Grupo 17 y la lista de roles `*-be` del Keycloak de M5 no deben asumirse compatibles: hay que comprobar emisor, claim de roles y scope en la configuración real.
-- **Pendiente:** definir qué modo de tokens usar en el entorno compartido y verificar URL, token y respuesta con M2 y M5 en ejecución. No se verificó conectividad durante esta revisión.
+- En modo `jwks`, M5 no firma tokens: debe configurarse `M2_TOKEN` con un token Keycloak, o implementarse/configurarse un proveedor M2M para pedirlo automáticamente. La cuenta debe tener `SERVICIO` y `clientes.estado:read`.
+- **Pendiente:** verificar URL, rol/token y respuesta con M2 y M5 en ejecución. No se verificó conectividad durante esta revisión.
 
 ### M3 — ofertas y datos del conductor — **integrado; queda un problema de repetición**
 
@@ -79,7 +74,7 @@
 
 - Si `M8_URL` está configurada, M5 guarda los eventos en su outbox de base de datos y los envía a `POST /api/v1/eventos` sin bloquear el despacho. Conserva el mismo `eventoId` y cuerpo al reintentar; aplica hasta ocho intentos para errores transitorios y respeta `Retry-After`.
 - Después de crear el viaje en M6, M5 envía en orden `VIAJE_SOLICITADO` y `VIAJE_ASIGNADO`, ambos con el `viajeId` real. No envía eventos previos al viaje ni `SOLICITUD_CANCELADA`/`BUSQUEDA_SIN_CONDUCTOR`, que no están en el enum publicado por M8.
-- **Discrepancia M5–M8:** el handler de M8 exige `detalle.conductorId` para `VIAJE_ASIGNADO`, pero el OpenAPI publicado no lo define y restringe propiedades adicionales. M5 lo incluye para satisfacer la implementación; M8 debe alinear/publicar el contrato. No se modificó M8.
+- M5 envía `VIAJE_SOLICITADO` y `VIAJE_ASIGNADO` con `viajeId`, destinatario cliente y propiedades de detalle permitidas por el OpenAPI de M8. No envía `detalle.conductorId`, que no está publicado en el esquema.
 - **Discrepancia M5–M9–M8:** M5 acepta `cliente_email` opcional para entregar el contacto a M8, pero M9 todavía no lo envía al activar una reserva. En ese caso M8 podría no tener un contacto utilizable.
 - **Pendiente operativo:** después de agotar los ocho intentos el evento queda `FALLIDA`; no se reintenta automáticamente. Se necesita resolver el contrato y acordar cómo inspeccionar/reprocesar esos eventos.
 
@@ -103,7 +98,7 @@ Estos pendientes son los que quedan después de los cambios revisados. “Implem
 | 2 | Probar M6/RabbitMQ y M8 en ejecución. | Configurar `M6_RABBITMQ_URL` y `M8_URL`; verificar alta, cancelación con/sin redespacho, reconexión, DLQ y entrega/reintento de notificaciones. |
 | 3 | Reutilizar el vehículo persistido al repetir una asignación. | M5 guarda `vehiculo_id`, pero al repetir vuelve a consultar M3. Recuperar primero el valor persistido para no cambiar el cuerpo enviado a M6 bajo el mismo `requestId`. |
 | 4 | Decidir si se implementa reintento durable del callback M9. | Hoy hay hasta tres intentos HTTP por llamada, pero no recuperación tras agotarlos o reiniciar. Este punto se verificó y quedó sin cambios; requiere decisión de alcance antes de implementar. |
-| 5 | Cerrar discrepancias de notificaciones. | Acordar con M8 cómo publicar/aceptar `detalle.conductorId`; solicitar a M9 que envíe `cliente_email` cuando disponga de él. Definir también cómo inspeccionar/reprocesar eventos M8 en estado `FALLIDA`. |
+| 5 | Cerrar pendientes operativos de notificaciones. | Solicitar a M9 que envíe `cliente_email` cuando disponga de él. Definir cómo inspeccionar/reprocesar eventos M8 en estado `FALLIDA` y probar la integración completa. |
 | 6 | Definir estrategia cuando M4 devuelve el máximo de candidatos. | El contrato revisado no tiene paginación y M5 no consulta otra lista al agotar las tandas. Acordar una estrategia compatible con M4. |
 | 7 | Confirmar autenticación y configuración integrada. | Verificar emisor, roles/scopes y credenciales para M1/M2/M3/M4/M6/M7/M8/M9. La discrepancia de `tarifas:read` corresponde a la implementación de M7, no se puede resolver editando M5 solamente. |
 | 8 | Completar pruebas de extremo a extremo. | Probar frontend → BFF → M5, persistencia MySQL, despacho, cancelación, idempotencia, reinicio y callbacks con los servicios desplegados. |

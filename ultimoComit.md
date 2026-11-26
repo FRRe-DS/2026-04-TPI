@@ -28,7 +28,7 @@ Este documento resume los cambios de integración trabajados dentro de M5 y expl
 - Se implementó un outbox persistente para los eventos `VIAJE_SOLICITADO` y `VIAJE_ASIGNADO`.
 - Los eventos se encolan después de que M6 devuelve el `viajeId` real y se envían en ese orden.
 - Los reintentos conservan el mismo `eventoId` y cuerpo; se consideran errores transitorios, se respeta `Retry-After` y se limita la cantidad de intentos.
-- M5 incluye el contacto del cliente cuando está disponible y el `conductorId` en el detalle de asignación, requerido por la implementación de M8.
+- M5 incluye el contacto del cliente cuando está disponible y limita el detalle de asignación a las propiedades publicadas por M8.
 
 **Por qué y para qué:** no perder los avisos si M8 está temporalmente indisponible y evitar que el envío de notificaciones bloquee o revierta la asignación.
 
@@ -41,6 +41,14 @@ Este documento resume los cambios de integración trabajados dentro de M5 y expl
 - El cliente HTTP conserva el valor `Retry-After` para programar reintentos.
 
 **Por qué y para qué:** mantener el estado de integración entre reinicios, generar IDs idempotentes por intento y evitar depender de datos volátiles en memoria.
+
+### Token automático M5 → M2 en desarrollo
+
+- Si `M2_TOKEN` está vacío y M5 está configurado con `M2_MODO_TOKENS=hs256`, M5 firma en memoria un JWT corto con rol `SERVICIO` y lo renueva antes de vencer. Usa la misma clave, emisor, audiencia y claim de roles que M2.
+- Si M2 usa Keycloak/JWKS, este modo no aplica: hace falta un proveedor M2M de Keycloak y una cuenta con el rol/scope que requiere M2.
+- Se agregó la guía común `Contrato/2026-TPI/guias/autenticacion-servicio.md` para que otros grupos adopten la obtención/cacheo automático de tokens, preferentemente con `client_credentials`.
+
+**Por qué y para qué:** evitar copiar access tokens efímeros a `.env`; las credenciales o clave de firma siguen siendo configuración del entorno.
 
 > El cliente Prisma se generó correctamente. No se ejecutó `db:push`; antes de usar estos cambios contra una base real hay que aplicar el esquema correspondiente.
 
@@ -59,7 +67,7 @@ Este documento resume los cambios de integración trabajados dentro de M5 y expl
 ## Pendientes y discrepancias
 
 1. **M9:** el callback recibe reintentos HTTP limitados, pero no existe outbox durable que lo recupere tras agotar los intentos o reiniciar M5. Se revisó y se dejó sin cambios.
-2. **M8:** su implementación exige `detalle.conductorId` en `VIAJE_ASIGNADO`, pero el OpenAPI publicado no lo documenta y restringe propiedades adicionales. M5 lo envía para ajustarse al handler; M8 debe alinear su contrato.
+2. **M8:** M5 omite `detalle.conductorId`, que no está publicado en el esquema y no es necesario para que M8 acepte el evento. Sigue pendiente la prueba integrada del outbox.
 3. **M9/M8:** M5 acepta `cliente_email` opcional para notificaciones, pero M9 todavía no lo envía al activar una reserva.
 4. **M3:** M5 persiste el vehículo asignado, pero al repetir el procesamiento vuelve a consultar M3 en vez de reutilizar siempre el valor guardado. Si M3 devuelve otro vehículo, M6 puede recibir datos distintos para el mismo `requestId`.
 5. **M4:** no hay paginación documentada para superar los 100 candidatos; M5 procesa en tandas la lista recibida y no consulta otra lista al agotarla.
@@ -79,7 +87,7 @@ Se actualizaron las descripciones y esquemas de integración de M5 para que refl
 
 - **M4:** se documentó que M5 solicita `limite=100`, el máximo del contrato, y que M4 no ofrece paginación documentada para recuperar candidatos adicionales.
 - **M6:** se precisó que `requestId` es único por intento, con un identificador nuevo al redespachar. Se actualizaron el exchange, routing key y colas RabbitMQ de `TripCancelled`, y el esquema ahora representa el sobre del evento con los datos dentro de `payload`.
-- **M8:** el esquema de solicitud se ajustó a los tipos publicados que M5 realmente envía (`VIAJE_SOLICITADO` y `VIAJE_ASIGNADO`) y a que ambos requieren el `viajeId` real. También se anotó que `detalle.conductorId` lo exige la implementación de M8 aunque no figure en su OpenAPI publicado.
+- **M8:** el esquema de solicitud se ajustó a los tipos publicados que M5 envía (`VIAJE_SOLICITADO` y `VIAJE_ASIGNADO`), ambos con el `viajeId` real y solo propiedades de detalle incluidas en el contrato.
 - **M9:** se documentó `cliente_email` como campo opcional que M5 acepta para notificaciones, aunque M9 aún no lo envía. También se aclaró que el callback de resultado tiene reintentos HTTP limitados, pero no una cola durable para recuperarlo tras fallos o reinicios.
 - **Flujo general:** se reemplazó el estado anterior de “pendiente/no implementado” para M6 y M8 por los flujos que ya existen en M5.
 

@@ -11,8 +11,8 @@ function crearOutboxM8({ prisma, clienteM8, obtenerToken, logger, reloj = () => 
   let cicloEnCurso = false;
   let temporizador = null;
 
-  async function encolarEventosViaje({ solicitudId, requestIdM6, viajeId, conductorId, datosViaje }) {
-    if (!solicitudId || !requestIdM6 || !viajeId || !conductorId || !datosViaje?.clienteId) {
+  async function encolarEventosViaje({ solicitudId, requestIdM6, viajeId, datosViaje }) {
+    if (!solicitudId || !requestIdM6 || !viajeId || !datosViaje?.clienteId) {
       throw new Error("Faltan datos para encolar los eventos de viaje de M8");
     }
 
@@ -42,7 +42,6 @@ function crearOutboxM8({ prisma, clienteM8, obtenerToken, logger, reloj = () => 
         detalle: {
           tipoVehiculo: datosViaje.tipoVehiculo,
           ...(importe ? { importe } : {}),
-          ...(tipo === "VIAJE_ASIGNADO" ? { conductorId } : {}),
         },
       };
 

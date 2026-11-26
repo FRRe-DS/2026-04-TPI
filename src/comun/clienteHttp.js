@@ -52,7 +52,9 @@ function crearClienteHttp({
         const encabezados = { accept: "application/json" };
         if (cuerpo !== undefined) encabezados["content-type"] = "application/json";
         if (claveIdempotencia) encabezados["idempotency-key"] = claveIdempotencia;
-        const tokenFinal = token || tokenPorDefecto;
+        const tokenFinal = token || (typeof tokenPorDefecto === "function"
+          ? await tokenPorDefecto()
+          : tokenPorDefecto);
         if (tokenFinal) encabezados.authorization = `Bearer ${tokenFinal}`;
 
         const respuesta = await fetchImpl(base + ruta, {

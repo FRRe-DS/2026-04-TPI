@@ -783,10 +783,8 @@ x-integraciones:
         `BUSQUEDA_SIN_CONDUCTOR` no están en el enum publicado de M8 y no se
         envían desde M5.
 
-        La implementación de M8 exige `detalle.conductorId` en
-        `VIAJE_ASIGNADO`, aunque su OpenAPI publicado no define ese campo.
-        M5 lo incluye para coincidir con la implementación; falta alinear ese
-        contrato en M8.
+        M5 envía únicamente los campos publicados por M8; no agrega
+        `detalle.conductorId`, que no forma parte de su esquema.
       cuerpo:
         $ref: '#/components/schemas/EventoM8Request'
       respuesta_202:
@@ -796,7 +794,6 @@ x-integraciones:
         viaje_id: viajeId
         reserva_id: reservaId
         cliente_id: destinatarios[].usuarioId (rol CLIENTE)
-        conductor_id: detalle.conductorId (VIAJE_ASIGNADO)
         email del JWT de M1 o cliente_email de M9: destinatarios[].email cuando esté disponible
         tipo_vehiculo: detalle.tipoVehiculo
         tarifa_estimada.total_estimado: detalle.importe.monto
@@ -816,8 +813,7 @@ x-integraciones:
       decisiones:
         - |
           M5 avisa al cliente. No incluye al conductor como destinatario
-          porque M5 no dispone de su contacto; `detalle.conductorId` se envía
-          únicamente para que M8 registre el hito de asignación.
+          porque M5 no dispone de su contacto.
 
   M9:
     fuentes: [Propuesta de contrato a M9.md, Estados.md]
@@ -1311,8 +1307,7 @@ components:
     DetalleEventoM8:
       description: |
         Datos que M8 necesita para redactar el aviso. M5 omite origen y destino
-        por ahora. La implementación actual de M8 requiere conductorId para
-        VIAJE_ASIGNADO, aunque su OpenAPI publicado todavía no lo documenta.
+        por ahora y solo envía propiedades definidas en el contrato publicado.
       type: object
       additionalProperties: false
       properties:
@@ -1325,10 +1320,6 @@ components:
         tipoVehiculo:
           type: string
           enum: [AUTO, MOTO]
-        conductorId:
-          allOf:
-            - $ref: '#/components/schemas/Identificador'
-          description: Requerido por la implementación de M8 para VIAJE_ASIGNADO; pendiente de publicar en su contrato.
         importe:
           type: object
           additionalProperties: false
@@ -1390,7 +1381,6 @@ components:
             email: cliente@ejemplo.com
         detalle:
           tipoVehiculo: AUTO
-          conductorId: 59d44b71-61a1-465d-9f2b-845d3a9c7003
     EventoM8Recibido:
       description: Respuesta 202 de M8.
       type: object

@@ -117,7 +117,7 @@ function crearNotificaciones({ clienteM3, clienteM4, clienteM6, rutas, logger, o
         }
       }
       if (typeof encolarEventosM8 === "function") {
-        await encolarEventosM8({ solicitudId, requestIdM6, viajeId: tripId, conductorId, datosViaje });
+        await encolarEventosM8({ solicitudId, requestIdM6, viajeId: tripId, datosViaje });
       }
       return tripId;
     },
