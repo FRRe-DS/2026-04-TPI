@@ -4,3 +4,6 @@
 
 # No subir dependencias
 node_modules/
+
+# Carpeta local AGY
+AGY/

@@ -77,7 +77,13 @@ describe("POST /ofertas/:id/respuesta: rechazo y aceptación de punta a punta", 
   test("rechazar: 200, repetir: 200 con repetida:true, y no se expone el estado de la búsqueda", async () => {
     const a = await responder(O1, false, token("cond-1"));
     assert.equal(a.status, 200);
-    assert.deepEqual(await a.json(), { resultado: "rechazada", solicitudId: "sol-1", repetida: false });
+    assert.deepEqual(await a.json(), {
+      resultado: "rechazada",
+      solicitudId: "sol-1",
+      repetida: false,
+      status: "REJECTED",
+      tripId: null,
+    });
     const b = await responder(O1, false, token("cond-1"));
     assert.equal(b.status, 200);
     assert.equal((await b.json()).repetida, true);

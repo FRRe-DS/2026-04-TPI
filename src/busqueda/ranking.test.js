@@ -1,21 +1,35 @@
 // src/busqueda/ranking.test.js
-const { ordenarCandidatosPorDistancia } = require('./ranking');
+const { describe, test } = require("node:test");
+const assert = require("node:assert/strict");
+const { ordenarCandidatosPorDistancia } = require("./ranking");
 
-test('Debería ordenar a los conductores del más cercano al más lejano', () => {
-  // Lista de conductores desordenados de prueba
-  const conductoresDesordenados = [
-    { id: 1, distancia: 5.5 },
-    { id: 2, distancia: 1.2 },
-    { id: 3, distancia: 3.0 }
-  ];
+describe("ordenarCandidatosPorDistancia", () => {
+  test("Debería ordenar a los conductores del más cercano al más lejano", () => {
+    const conductoresDesordenados = [
+      { id: 1, distancia: 5.5 },
+      { id: 2, distancia: 1.2 },
+      { id: 3, distancia: 3.0 },
+    ];
 
-  // Ejecutamos la función de ordenamiento
-  const resultado = ordenarCandidatosPorDistancia(conductoresDesordenados);
+    const resultado = ordenarCandidatosPorDistancia(conductoresDesordenados);
 
-  // Verificamos que el primero sea el de menor distancia (1.2)
-  expect(resultado[0].id).toBe(2);
-  // Que el segundo sea el de 3.0
-  expect(resultado[1].id).toBe(3);
-  // Que el último sea el de 5.5
-  expect(resultado[2].id).toBe(1);
+    assert.equal(resultado[0].id, 2);
+    assert.equal(resultado[1].id, 3);
+    assert.equal(resultado[2].id, 1);
+  });
+
+  test("Debería permitir ordenar por una clave de distancia personalizada (ej. distanciaM)", () => {
+    const candidatos = [
+      { conductorId: "c-lejos", distanciaM: 1450 },
+      { conductorId: "c-cerca", distanciaM: 220 },
+      { conductorId: "c-medio", distanciaM: 680 },
+    ];
+
+    const resultado = ordenarCandidatosPorDistancia([...candidatos], "distanciaM");
+
+    assert.deepEqual(
+      resultado.map((c) => c.conductorId),
+      ["c-cerca", "c-medio", "c-lejos"]
+    );
+  });
 });
