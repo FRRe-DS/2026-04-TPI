@@ -208,6 +208,7 @@ function crearDependencias(prisma) {
   const m7 = process.env.M7_URL
     ? crearClienteHttp({ baseUrl: process.env.M7_URL, tokenPorDefecto: process.env.M7_TOKEN, timeoutMs: 3000, reintentos: 2, logger })
     : null;
+  const m8 = crearClienteHttp({ baseUrl: process.env.M8_URL, tokenPorDefecto: process.env.M8_TOKEN, timeoutMs: 3000, reintentos: 2, logger,});
   const rutas = {
     m3EnviarOfertas: () => process.env.M3_RUTA_ENVIAR_OFERTAS || "/api/v1/integration/m5/offers",
     m6ConductorAsignado: () => process.env.M6_RUTA_CREAR_VIAJE || "/trips",
