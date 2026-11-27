@@ -5,6 +5,18 @@ const esquemaParamsOferta = z
   .object({ ofertaId: z.string().uuid("ofertaId debe ser un UUID válido") })
   .strict();
 
+// M3 usa su contrato propio en inglés y solo manda el conductor y la decisión.
+const esquemaParamsOfertaM3 = z
+  .object({ offerId: z.string().uuid("offerId debe ser un UUID válido") })
+  .strict();
+
+const esquemaDecisionM3 = z
+  .object({
+    driverId: z.string().uuid("driverId debe ser un UUID válido"),
+    decision: z.enum(["ACCEPTED", "REJECTED"]),
+  })
+  .strict();
+
 // Contrato con M3: el conductor responde con los ids y "aceptado" o "rechazado".
 // solicitud_id y conductor_id se piden como texto no vacío (se comparan con lo guardado en la oferta);
 // oferta_id es un UUID.
@@ -29,4 +41,10 @@ const esquemaParamsSolicitud = z
   .object({ solicitudId: z.string().uuid("solicitudId debe ser un UUID válido") })
   .strict();
 
-module.exports = { esquemaParamsOferta, esquemaRespuestaOferta, esquemaParamsSolicitud };
+module.exports = {
+  esquemaParamsOferta,
+  esquemaParamsOfertaM3,
+  esquemaDecisionM3,
+  esquemaRespuestaOferta,
+  esquemaParamsSolicitud,
+};

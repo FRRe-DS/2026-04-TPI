@@ -16,12 +16,16 @@ model Solicitud {
   destinoLat    Float
   destinoLng    Float
   tipoVehiculo  String
+  emailCliente  String?
   vehiculo_id   String?
   costo         Float?
   moneda        String?
   tipoActivacion String  @default("Inmediata")
   reservaId     String?  @unique
   conductorId   String?
+  requestIdM6   String?  @unique
+  intentoDespacho Int    @default(1)
+  viajeId       String?
   estado        String   @default("pendiente")
   creadaEn      DateTime @default(now())
 }
@@ -43,6 +47,7 @@ enum EstadoBusqueda {
 }
 
 enum TipoEvento {
+  SOLICITUD_CREADA
   BUSQUEDA
   OFERTA
   RECHAZO
@@ -68,6 +73,7 @@ model Oferta {
 model Busqueda {
   busquedaId          String         @id @default(uuid())
   solicitudId         String
+  ronda               Int            @default(1)
   estado              EstadoBusqueda @default(activa)
   venceEn             DateTime
   candidatosRestantes Int
@@ -103,4 +109,42 @@ model Evento {
   detalle     String?
 
   @@index([solicitudId, ocurridoEn])
+}
+
+// Claves idempotentes de creación: permiten recuperar una solicitud ante un reintento
+// y detectar si el cliente reutilizó la misma clave con datos diferentes.
+model IdempotenciaSolicitud {
+  clave          String
+  operacion      String
+  identidadId    String
+  huellaSolicitud String
+  solicitudId    String
+  creadaEn       DateTime @default(now())
+
+  @@id([clave, operacion, identidadId])
+  @@index([solicitudId])
+}
+
+model EventoM6Procesado {
+  eventoId     String   @id
+  requestId    String
+  payloadHash  String
+  procesadoEn DateTime @default(now())
+}
+
+model NotificacionM8 {
+  eventoId        String   @id @default(uuid())
+  solicitudId     String
+  requestIdM6     String
+  tipo            String
+  cuerpo          Json
+  estado          String   @default("PENDIENTE")
+  intentos        Int      @default(0)
+  proximoIntento  DateTime @default(now())
+  ultimoError     String?  @db.Text
+  creadoEn        DateTime @default(now())
+  enviadoEn       DateTime?
+
+  @@unique([solicitudId, requestIdM6, tipo])
+  @@index([estado, proximoIntento, creadoEn])
 }

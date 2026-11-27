@@ -42,6 +42,7 @@ async function procesarBusquedaAgotada({ solicitudId, motivo }, deps) {
 
   // Ya confirmado: M4 reserva a toda la lista, así que se libera a los que sigan reservados.
   // Un fallo acá no deshace nada; se informa en `avisosFallidos`.
+  const avisosFallidos = [];
   if (resultado.senalEnviada) {
     try {
       await conTimeout(
@@ -52,10 +53,18 @@ async function procesarBusquedaAgotada({ solicitudId, motivo }, deps) {
       );
     } catch (error) {
       deps.logger?.error({ err: error, solicitudId, aviso: "liberarConductores" }, "falló la liberación al agotarse la búsqueda");
-      return { ...resultado, avisosFallidos: ["liberarConductores"] };
+      avisosFallidos.push("liberarConductores");
+    }
+    if (typeof deps.notificarResultadoReserva === "function") {
+      try {
+        await deps.notificarResultadoReserva({ solicitudId, resultado: "VENCIDA", fecha: ahora });
+      } catch (error) {
+        deps.logger?.error({ err: error, solicitudId, aviso: "resultadoReservaM9" }, "falló el aviso de resultado a M9");
+        avisosFallidos.push("resultadoReservaM9");
+      }
     }
   }
-  return resultado;
+  return { ...resultado, ...(avisosFallidos.length ? { avisosFallidos } : {}) };
 }
 
 // Lo llama quien cierra una ronda de ofertas (rechazo, vencimiento, sin candidatos).

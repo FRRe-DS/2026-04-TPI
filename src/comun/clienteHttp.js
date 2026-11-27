@@ -8,16 +8,25 @@
 //    (así un reintento no puede duplicar efectos, RNF-09).
 
 class ErrorServicioExterno extends Error {
-  constructor(mensaje, { estado = null, causa = null, intentos = 1 } = {}) {
+  constructor(mensaje, { estado = null, causa = null, intentos = 1, retryAfterMs = null } = {}) {
     super(mensaje);
     this.name = "ErrorServicioExterno";
     this.estado = estado;
     this.causa = causa;
     this.intentos = intentos;
+    this.retryAfterMs = retryAfterMs;
   }
 }
 
 const dormir = (ms) => new Promise((resolver) => setTimeout(resolver, ms));
+
+function leerRetryAfter(valor, ahora = Date.now()) {
+  if (!valor) return null;
+  const segundos = Number(valor);
+  if (Number.isFinite(segundos) && segundos >= 0) return segundos * 1000;
+  const fecha = Date.parse(valor);
+  return Number.isFinite(fecha) ? Math.max(0, fecha - ahora) : null;
+}
 
 function crearClienteHttp({
   baseUrl,
@@ -43,7 +52,9 @@ function crearClienteHttp({
         const encabezados = { accept: "application/json" };
         if (cuerpo !== undefined) encabezados["content-type"] = "application/json";
         if (claveIdempotencia) encabezados["idempotency-key"] = claveIdempotencia;
-        const tokenFinal = token || tokenPorDefecto;
+        const tokenFinal = token || (typeof tokenPorDefecto === "function"
+          ? await tokenPorDefecto()
+          : tokenPorDefecto);
         if (tokenFinal) encabezados.authorization = `Bearer ${tokenFinal}`;
 
         const respuesta = await fetchImpl(base + ruta, {
@@ -62,6 +73,7 @@ function crearClienteHttp({
         ultimo = new ErrorServicioExterno(`Respuesta ${respuesta.status} de ${ruta}`, {
           estado: respuesta.status,
           intentos: intento,
+          retryAfterMs: leerRetryAfter(respuesta.headers?.get?.("retry-after")),
         });
         if (!reintentable) throw ultimo;
       } catch (error) {
@@ -79,7 +91,8 @@ function crearClienteHttp({
       }
       if (intento < maxIntentos) {
         logger?.warn({ ruta, intento }, "reintentando llamada externa");
-        await dormir(esperaBaseMs * 2 ** (intento - 1) + Math.floor(Math.random() * esperaBaseMs));
+        const espera = esperaBaseMs * 2 ** (intento - 1) + Math.floor(Math.random() * esperaBaseMs);
+        await dormir(Math.max(espera, ultimo?.retryAfterMs || 0));
       }
     }
     ultimo.intentos = maxIntentos;
@@ -92,4 +105,4 @@ function crearClienteHttp({
   };
 }
 
-module.exports = { crearClienteHttp, ErrorServicioExterno };
+module.exports = { crearClienteHttp, ErrorServicioExterno, leerRetryAfter };

@@ -194,7 +194,7 @@ cargarDatosUsuario();
       if (!response.ok) throw new Error(data.error || "No se pudo calcular la tarifa.");
       if (version !== estimateVersion) return;
 
-      const total = Number(data.desglose?.total);
+      const total = Number(data.total_estimado ?? data.desglose?.total);
       if (!Number.isFinite(total) || total < 0) throw new Error("M7 no devolvió un total válido.");
       estimateReady = true;
       mostrarCosto(formatoMoneda(total, data.moneda), "Estimación orientativa. Se confirma al crear la solicitud.");
@@ -242,7 +242,8 @@ cargarDatosUsuario();
       const response = await fetch("/api/solicitudes/inmediata", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          "Idempotency-Key": crypto.randomUUID()
         },
         body: JSON.stringify({
           origen: origen,

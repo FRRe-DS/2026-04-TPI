@@ -18,6 +18,16 @@ function crearRepositorioOfertas(prisma, { reloj = () => new Date() } = {}) {
   const cliente = (tx) => tx ?? prisma;
 
   return {
+    // Consultas de lectura que alimentan el contrato público de M5.
+    listarPorSolicitud: (solicitudId) => prisma.oferta.findMany({
+      where: { solicitudId },
+      orderBy: { enviadaEn: "asc" },
+    }),
+    listarPorConductor: ({ conductorId, estado }) => prisma.oferta.findMany({
+      where: { conductorId, ...(estado ? { estado } : {}) },
+      orderBy: { enviadaEn: "desc" },
+    }),
+
     // Despacho por tandas: crea las ofertas de una tanda, todas PENDIENTES y con el mismo vencimiento.
     async crearTanda({ solicitudId, ofertas, venceEn, ahora = reloj() }, tx) {
       if (!ofertas?.length) return { creadas: 0 };

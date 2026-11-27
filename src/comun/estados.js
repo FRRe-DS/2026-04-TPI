@@ -24,6 +24,7 @@ const EstadoBusqueda = Object.freeze({
 });
 
 const TipoEvento = Object.freeze({
+  SOLICITUD_CREADA: "SOLICITUD_CREADA",
   BUSQUEDA: "BUSQUEDA",
   OFERTA: "OFERTA",
   RECHAZO: "RECHAZO",

@@ -18,6 +18,9 @@
 //    estado de Solicitud use buscando/asignada/cancelada/sin_disponibilidad (minúscula), ver src/comun/estados.js).
 //  - Evento: lo define A; esta es una PROPUESTA con los campos que registra el código.
 //  - Formato de conductorId: depende de M3 (no se fija a UUID).
+//
+// `Solicitud` debe incluir `emailCliente String?`, `requestIdM6 String? @unique`,
+// `intentoDespacho Int @default(1)` y `viajeId String?` para las integraciones M6/M8.
 
 enum EstadoOferta {
   pendiente
@@ -64,6 +67,7 @@ model Oferta {
 model Busqueda {
   busquedaId          String         @id @default(uuid())
   solicitudId         String
+  ronda               Int            @default(1)
   estado              EstadoBusqueda @default(activa)
   venceEn             DateTime
   candidatosRestantes Int
@@ -104,4 +108,28 @@ model Evento {
   detalle     String?
 
   @@index([solicitudId, ocurridoEn])
+}
+
+model EventoM6Procesado {
+  eventoId     String   @id
+  requestId    String
+  payloadHash  String
+  procesadoEn DateTime @default(now())
+}
+
+model NotificacionM8 {
+  eventoId        String   @id @default(uuid())
+  solicitudId     String
+  requestIdM6     String
+  tipo            String
+  cuerpo          Json
+  estado          String   @default("PENDIENTE")
+  intentos        Int      @default(0)
+  proximoIntento  DateTime @default(now())
+  ultimoError     String?  @db.Text
+  creadoEn        DateTime @default(now())
+  enviadoEn       DateTime?
+
+  @@unique([solicitudId, requestIdM6, tipo])
+  @@index([estado, proximoIntento, creadoEn])
 }

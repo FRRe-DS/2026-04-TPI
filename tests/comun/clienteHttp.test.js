@@ -52,6 +52,22 @@ describe("Cliente HTTP con timeout y reintentos (RNF-13)", () => {
     } finally { await cerrar(s); }
   });
 
+  test("expone Retry-After para que el outbox reprograme el siguiente intento", async () => {
+    const { s, url } = await servidor((req, res) => {
+      req.resume();
+      res.statusCode = 429;
+      res.setHeader("Retry-After", "3");
+      res.end();
+    });
+    try {
+      const c = crearClienteHttp({ baseUrl: url, reintentos: 0 });
+      await assert.rejects(
+        () => c.post("/x", {}, { claveIdempotencia: "evento-1" }),
+        (error) => error.estado === 429 && error.retryAfterMs === 3000
+      );
+    } finally { await cerrar(s); }
+  });
+
   test("si el servicio no responde, corta por timeout y agota los reintentos (no espera para siempre)", async () => {
     let llamadas = 0;
     const { s, url } = await servidor((req) => { llamadas += 1; req.resume(); /* nunca responde */ });
