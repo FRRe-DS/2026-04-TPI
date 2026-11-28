@@ -261,8 +261,8 @@ Stack tecnológico:
 | Módulo | M5 (G04) |
 | Objetivo | Tener CI en el repositorio de G04 con la misma estructura que en G13 |
 | Decisiones/acuerdos | Branch en el repositorio de G04 (permisos de administrador confirmados). Política de tests aplicada: DevOps actualiza los tests desfasados. Los secretos reales no se excluyen: el job falla hasta que G04 los rote. CI en dos PR: primero build, unitarios, SAST y secretos; después E2E y Docker |
-| Repositorio/issue/PR | G04, branch `devops/ci` (PR a abrir) |
-| Evidencia | Tests en `main` (`f52f0e2`): 154/170 → 171/171 con los arreglos. gitleaks: 6 hallazgos, 3 reales (`.env.example:65`, `front/.env.example:8` y `:11`) |
+| Repositorio/issue/PR | G04, PR #1 (https://github.com/FRRe-DS/2026-04-TPI/pull/1), branch `devops/ci`, commit `52dae04` |
+| Evidencia | Primera ejecución del CI (https://github.com/FRRe-DS/2026-04-TPI/actions/runs/46096149746): `build`, `unit-tests` (171/171; en `main`, 154/170) y `sast` en verde; CodeQL sin alertas nuevas; `secrets` en rojo por los 3 secretos reales (`.env.example:65`, `front/.env.example:8` y `:11`), de 6 hallazgos |
 | Resultado | Línea base de tests en verde en G04. Pipeline listo para el PR, con `secrets` en rojo por los secretos commiteados |
 | Dificultad o bloqueo | Los secretos están en el historial de git: además de reemplazarlos hay que rotarlos. El contrato con M3 no se puede validar contra el repositorio de la cátedra |
 | Siguiente acción | Abrir el PR en G04, pedirle a G04 que rote los secretos y armar el segundo PR con E2E y Docker |
