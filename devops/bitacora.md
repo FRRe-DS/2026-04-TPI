@@ -308,13 +308,19 @@ Stack tecnológico:
   (`GET /solicitudes/{id}/ofertas`) quedó respondiendo siempre 403; el frontend no la usa.
 - gitleaks encontró en el proyecto de investigación que G04 subió al repositorio 2 falsos positivos
   (el encabezado `Sec-WebSocket-Key`, un valor aleatorio del protocolo WebSocket), que se excluyeron.
+- Al actualizar el PR #1, el Quality Gate de SAST falló con 13 alertas altas, todas de la regla
+  `js/missing-rate-limiting` y todas en `INVESTIGACIÓN/` (servicios `asientos` y `funciones` del
+  proyecto de investigación). En `src/`, el código de M5, no hubo ninguna alta ni crítica: M5 ya
+  limita la cantidad de pedidos con `express-rate-limit`. Se excluyó `INVESTIGACIÓN/` del análisis de
+  CodeQL, porque el SAST cubre el módulo M5 y no otro trabajo práctico subido al mismo repositorio.
+  gitleaks la sigue revisando.
 
 | Campo | Detalle |
 |---|---|
 | Responsable/s | Fidanza, Felipe · Jerez, Fabricio E. · Urturi, Renzo O. |
 | Módulo | M5 (G04) |
 | Objetivo | Completar el CI de G04 con E2E y Docker |
-| Decisiones/acuerdos | El E2E verifica el comportamiento correcto aunque falle: el error de despacho es de lógica funcional y lo corrige G04 (lo hizo el mismo día, en `050ebda`). Ante el conflicto con `main` se adoptan los tests de G04, que son los dueños. Mocks y scripts compartidos idénticos en los dos repositorios |
+| Decisiones/acuerdos | El E2E verifica el comportamiento correcto aunque falle: el error de despacho es de lógica funcional y lo corrige G04 (lo hizo el mismo día, en `050ebda`). Ante el conflicto con `main` se adoptan los tests de G04, que son los dueños. El SAST analiza solo el código de M5 (`INVESTIGACIÓN/` excluida de CodeQL). Mocks y scripts compartidos idénticos en los dos repositorios |
 | Repositorio/issue/PR | G04, branch `devops/e2e` (PR a abrir) y PR #1 actualizado con `main`. G13, branch `devops/ci` (PR #14): mocks y script de tokens actualizados |
 | Evidencia | E2E local de G04 antes del arreglo: 25/29 (las 4 que fallan son las del error de despacho); con la llamada agregada en una copia descartable: 35/35; contra el `main` actual de G04: 35/35. Tests de G04 con `main` incorporado: 208/208. E2E de G13 con los mocks compartidos: 45/45. Imagen de G04: `healthy`, usuario `node` |
 | Resultado | CI de G04 con los seis jobs y el E2E en verde. El error de despacho quedó detectado, localizado y corregido |
