@@ -51,6 +51,8 @@ El job `unit-tests` corre los mismos archivos que `npm test` (`tests/`, `src/**/
 - **Bloquean** el PR las alertas con *security-severity* ≥ 7.0 (**altas** y **críticas**).
 - Las **medias** y **bajas** se informan en el resumen sin bloquear.
 - El umbral se cambia en un solo lugar: `--umbral` en el job `sast`.
+- CodeQL analiza el código de M5. La carpeta `INVESTIGACIÓN/` (un proyecto de investigación aparte)
+  queda fuera del análisis; gitleaks sí la revisa.
 
 ### E2E
 
