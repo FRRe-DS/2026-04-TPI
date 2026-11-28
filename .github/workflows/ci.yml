@@ -5,10 +5,11 @@
 #
 #   build      instala dependencias, genera el cliente de Prisma y verifica que la app carga
 #   unit-tests node --test (fakes en memoria, como hoy) con reporte JUnit en el resumen
+#   e2e        app + MySQL real + mocks de M1, M2, M3, M4, M6, M7 y M8 (WireMock), flujo con k6
 #   sast       CodeQL + Quality Gate (bloquean alertas altas y críticas)
 #   secrets    gitleaks sobre el árbol actual y los commits nuevos
+#   docker     build de la imagen (sin publicar)
 #
-# Próximo PR: e2e (app + MySQL real + mocks, flujo con k6) y docker (Dockerfile nuevo).
 # Detalle y decisiones: devops/README.md
 
 name: CI
@@ -31,6 +32,9 @@ concurrency:
 env:
   M5_IMPL: G04
   NODE_VERSION: "22"
+  PYTHON_VERSION: "3.12" # solo para los scripts de devops/ci
+  K6_VERSION: "2.4.0"
+  WIREMOCK_IMAGE: wiremock/wiremock:3.13.2
   GITLEAKS_VERSION: "8.30.1"
 
 jobs:
@@ -97,6 +101,123 @@ jobs:
         with:
           name: junit-unit-${{ env.M5_IMPL }}
           path: reports/junit-unit.xml
+          if-no-files-found: warn
+
+  e2e:
+    name: e2e
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.4
+        # Credenciales descartables: la base existe solo durante este job.
+        env:
+          MYSQL_ROOT_PASSWORD: root_ci
+          MYSQL_DATABASE: despacho
+          MYSQL_USER: m5_user
+          MYSQL_PASSWORD: m5_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot_ci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    env:
+      PORT: "3001"
+      DB_HOST: 127.0.0.1
+      DB_PORT: "3306"
+      DB_USER: m5_user
+      DB_PASSWORD: m5_ci
+      DB_NAME: despacho
+      # Todos los módulos dependientes los atiende el mismo WireMock (por ruta).
+      MOCKS_URL: http://127.0.0.1:8089
+      KEYCLOAK_URL: http://127.0.0.1:8089
+      KEYCLOAK_REALM: ds-2026-realm
+      KEYCLOAK_ISSUER: http://127.0.0.1:8089/realms/ds-2026-realm # para m1_tokens_prueba.py
+      KEYCLOAK_AUDIENCE: m5-g04
+      JWT_AUDIENCE: m5-g04
+      M5_SERVICE_CLIENT_ID: m5-g04
+      M5_SERVICE_CLIENT_SECRET: descartable-ci # el mock no lo valida
+      M2_URL: http://127.0.0.1:8089
+      M2_TOKEN: token-de-servicio-ci
+      M3_URL: http://127.0.0.1:8089
+      M3_TOKEN: token-de-servicio-ci
+      M4_URL: http://127.0.0.1:8089
+      M4_TOKEN: token-de-servicio-ci
+      M6_URL: http://127.0.0.1:8089
+      M6_TOKEN: token-de-servicio-ci
+      M7_URL: http://127.0.0.1:8089
+      M8_URL: http://127.0.0.1:8089
+      M9_URL: http://127.0.0.1:8089
+      BASE_URL: http://127.0.0.1:3001
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Instalar dependencias
+        run: |
+          npm ci --no-audit --no-fund
+          npm run db:generate
+          pip install "pyjwt[crypto]"
+
+      - name: Token interno descartable (INTERNAL_API_TOKEN)
+        run: |
+          TOKEN="$(openssl rand -hex 32)"
+          echo "::add-mask::$TOKEN"
+          echo "INTERNAL_API_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+
+      - name: Levantar mocks de M1, M2, M3, M4, M6, M7 y M8 (WireMock)
+        run: |
+          docker run -d --name mocks -p 8089:8080 \
+            -v "$PWD/devops/mocks:/home/wiremock:ro" \
+            "$WIREMOCK_IMAGE"
+          timeout 60 bash -c 'until curl -fsS "$MOCKS_URL/__admin/mappings" >/dev/null; do sleep 1; done'
+          curl -fsS "$MOCKS_URL/__admin/mappings" | python -c "import json,sys; print(len(json.load(sys.stdin)['mappings']), 'mappings cargados')"
+
+      - name: Clave y tokens de prueba de M1 (reemplazo de Keycloak)
+        run: python devops/ci/m1_tokens_prueba.py --mock "$MOCKS_URL" >> "$GITHUB_ENV"
+
+      - name: Crear el esquema en MySQL (prisma db push)
+        run: npm run db:push
+
+      - name: Levantar M5
+        run: |
+          mkdir -p reports
+          nohup node src/main.js > reports/m5.log 2>&1 &
+          timeout 60 bash -c 'until curl -fsS "$BASE_URL/health/ready" >/dev/null; do sleep 1; done'
+
+      - uses: grafana/setup-k6-action@v1
+        with:
+          k6-version: ${{ env.K6_VERSION }}
+
+      - name: E2E con k6
+        run: k6 run --summary-export=reports/k6-e2e-summary.json devops/k6/e2e.js
+
+      - name: Logs de M5 y de los mocks
+        if: ${{ failure() }}
+        run: |
+          echo "::group::M5"; cat reports/m5.log; echo "::endgroup::"
+          echo "::group::Mocks"; docker logs mocks; echo "::endgroup::"
+          echo "::group::Requests sin mapping en los mocks"
+          curl -fsS "$MOCKS_URL/__admin/requests/unmatched" || true
+          echo "::endgroup::"
+
+      - name: Guardar reportes E2E
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-${{ env.M5_IMPL }}
+          path: reports/
           if-no-files-found: warn
 
   sast:
@@ -174,3 +295,19 @@ jobs:
             echo "Ejecución manual: se analiza todo el historial"
             gitleaks git . --config devops/ci/gitleaks.toml --redact --no-banner -v
           fi
+
+  docker:
+    name: docker
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build de la imagen (sin publicar)
+        run: |
+          docker build \
+            --label org.opencontainers.image.source="${{ github.server_url }}/${{ github.repository }}" \
+            --label org.opencontainers.image.revision="${{ github.sha }}" \
+            -t "m5-g04:${{ github.sha }}" .
+          docker image ls m5-g04

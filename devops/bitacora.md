@@ -267,4 +267,43 @@ Stack tecnológico:
 | Dificultad o bloqueo | Los secretos están en el historial de git: además de reemplazarlos hay que rotarlos. El contrato con M3 no se puede validar contra el repositorio de la cátedra |
 | Siguiente acción | Abrir el PR en G04, pedirle a G04 que rote los secretos y armar el segundo PR con E2E y Docker |
 
+### 28/11/2026 - E2E y Docker en G04: el despacho no puede asignar
+
+- Se aplicó por primera vez el esquema de Prisma de G04 sobre un MySQL real (`prisma db push`): se
+  crearon las 8 tablas sin errores.
+- Se armaron los mocks que faltaban para levantar G04 completo: M3 (envío de ofertas y datos del
+  conductor, contrato acordado en el consorcio A), M4 (estimación de ruta y reserva), M6 (creación
+  del viaje) y M7 (tarifa), según los contratos oficiales donde existen. Los mocks son los mismos
+  archivos en los dos repositorios; también se corrigieron los de M4, que exigían un encabezado
+  `X-Request-Id` que el contrato oficial declara opcional.
+- Se escribió el E2E de G04 con k6: solicitud inmediata (las mismas verificaciones que en G13),
+  despacho (candidatos de M4, reserva en M4 y ofertas por M3), asignación única con dos
+  aceptaciones simultáneas (RNF-08), sin disponibilidad y cancelación previa.
+- **Hallazgo:** el E2E encontró un error de la app que los tests unitarios no detectan. La
+  solicitud nunca pasa de `pendiente` a `buscando` cuando empieza el despacho: la función que lo
+  hace existe (`solicitudes.iniciarBusqueda`, `src/main.js:177-181`) pero `iniciarDespacho`
+  (`src/ofertas/despacho.js`) nunca la llama. Como aceptar exige que la solicitud esté en
+  `buscando`, **ninguna aceptación puede asignar un conductor** (las dos reciben 409) y la búsqueda
+  sin candidatos tampoco puede cerrar en `sin_disponibilidad`. La función existe desde el 23/11 y
+  nunca se llamó: no es una regresión.
+- Para confirmar que el E2E está bien escrito, se corrió contra una copia descartable de la app con
+  esa llamada agregada (solo dentro de un contenedor local, sin tocar el repositorio): pasaron las
+  35 verificaciones.
+- Se agregó un `Dockerfile` en dos etapas (usuario sin privilegios y `HEALTHCHECK` sobre `/health`)
+  y los jobs `e2e` y `docker` al CI, con lo que el workflow de G04 queda con los mismos seis jobs
+  que el de G13. La imagen se probó localmente: queda sana y el E2E da el mismo resultado contra
+  ella.
+
+| Campo | Detalle |
+|---|---|
+| Responsable/s | Fidanza, Felipe · Jerez, Fabricio E. · Urturi, Renzo O. |
+| Módulo | M5 (G04) |
+| Objetivo | Completar el CI de G04 con E2E y Docker |
+| Decisiones/acuerdos | El E2E verifica el comportamiento correcto aunque hoy falle: el error de despacho es de lógica funcional, así que lo corrige G04 (se le informa el arreglo propuesto). Mocks y scripts compartidos idénticos en los dos repositorios |
+| Repositorio/issue/PR | G04, branch `devops/e2e` (PR a abrir). G13, branch `devops/ci` (PR #14): mocks y script de tokens actualizados |
+| Evidencia | E2E local de G04: 25/29 verificaciones (las 4 que fallan son las del error de despacho); con la llamada agregada en una copia descartable: 35/35. E2E de G13 con los mocks compartidos: 45/45. Imagen de G04: `healthy`, usuario `node` |
+| Resultado | CI de G04 con los seis jobs. Error funcional de G04 detectado y localizado con archivo y línea |
+| Dificultad o bloqueo | Hasta que G04 corrija el despacho, el E2E de G04 queda en rojo. La imagen pesa ~800 MB porque el CLI de Prisma queda instalado: hay que achicarla antes del despliegue |
+| Siguiente acción | Abrir el PR del E2E en G04 y el issue del despacho con el arreglo propuesto |
+
 ## Carga y cierre

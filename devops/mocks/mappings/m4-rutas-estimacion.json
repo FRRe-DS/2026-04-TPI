@@ -1,0 +1,24 @@
+{
+  "name": "M4 GET /api/v1/rutas/estimacion - distancia y ETA del trayecto (esquema EstimacionRuta del contrato oficial)",
+  "request": {
+    "method": "GET",
+    "urlPath": "/api/v1/rutas/estimacion",
+    "queryParameters": {
+      "origen_latitud": { "matches": "-?[0-9]+(\\.[0-9]+)?" },
+      "origen_longitud": { "matches": "-?[0-9]+(\\.[0-9]+)?" },
+      "destino_latitud": { "matches": "-?[0-9]+(\\.[0-9]+)?" },
+      "destino_longitud": { "matches": "-?[0-9]+(\\.[0-9]+)?" }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json", "Cache-Control": "no-store" },
+    "jsonBody": {
+      "distancia_estimada_km": 6.2,
+      "eta_minutos": 14,
+      "calculado_en": "{{now}}",
+      "fuente": "estimacion_local"
+    },
+    "transformers": ["response-template"]
+  }
+}

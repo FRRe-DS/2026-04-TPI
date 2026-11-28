@@ -1,0 +1,17 @@
+{
+  "name": "M8 POST /api/v1/eventos - evento recibido (202, esquema EventoRecibido del contrato oficial)",
+  "request": {
+    "method": "POST",
+    "urlPath": "/api/v1/eventos",
+    "headers": { "Authorization": { "matches": "Bearer .+" } }
+  },
+  "response": {
+    "status": 202,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "eventoId": "{{jsonPath request.body '$.eventoId'}}",
+      "recibidoEn": "{{now}}"
+    },
+    "transformers": ["response-template"]
+  }
+}

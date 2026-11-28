@@ -1,0 +1,27 @@
+{
+  "name": "M4 GET /api/v1/conductores/cercanos - M4 no disponible (503 DependenciaNoDisponible). Se activa con origen_latitud=-27.0",
+  "priority": 1,
+  "request": {
+    "method": "GET",
+    "urlPath": "/api/v1/conductores/cercanos",
+    "queryParameters": {
+      "origen_latitud": {
+        "equalTo": "-27.0"
+      }
+    }
+  },
+  "response": {
+    "status": 503,
+    "headers": {
+      "Content-Type": "application/problem+json",
+      "Retry-After": "1"
+    },
+    "jsonBody": {
+      "type": "about:blank",
+      "title": "Dependencia no disponible",
+      "status": 503,
+      "detail": "Mock de CI: M4 simula que una dependencia no está disponible.",
+      "instance": "/api/v1/conductores/cercanos"
+    }
+  }
+}

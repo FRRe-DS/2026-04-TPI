@@ -1,0 +1,48 @@
+{
+  "name": "M4 GET /api/v1/conductores/cercanos - AUTO con candidatos (ejemplo 'candidatos' del contrato oficial)",
+  "priority": 5,
+  "request": {
+    "method": "GET",
+    "urlPath": "/api/v1/conductores/cercanos",
+    "queryParameters": {
+      "origen_latitud": {
+        "matches": "-?[0-9]+(\\.[0-9]+)?"
+      },
+      "origen_longitud": {
+        "matches": "-?[0-9]+(\\.[0-9]+)?"
+      },
+      "tipo_vehiculo": {
+        "equalTo": "AUTO"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+      "X-Request-Id": "{{request.headers.X-Request-Id}}"
+    },
+    "jsonBody": {
+      "conductores": [
+        {
+          "conductor_id": "018f1f20-7b4a-7cc2-9d41-66382a18cc5a",
+          "distancia_origen_km": 0.42,
+          "eta_retiro_minutos": 3,
+          "tipo_vehiculo": "AUTO"
+        },
+        {
+          "conductor_id": "018f1f20-7b4a-7cc2-9d41-66382a18cc5b",
+          "distancia_origen_km": 1.85,
+          "eta_retiro_minutos": 6,
+          "tipo_vehiculo": "AUTO"
+        }
+      ],
+      "radio_aplicado_km": 5,
+      "generado_en": "2026-10-20T15:04:06Z"
+    },
+    "transformers": [
+      "response-template"
+    ]
+  }
+}
