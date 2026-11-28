@@ -116,6 +116,11 @@ jobs:
           languages: javascript-typescript
           build-mode: none
           queries: security-extended
+          # INVESTIGACIÓN/ es un proyecto de investigación aparte (no es M5): queda fuera del SAST
+          # del módulo. gitleaks sí lo revisa. El patrón evita escribir la Ó.
+          config: |
+            paths-ignore:
+              - "INVESTIGACI*N/**"
 
       - name: Analizar con CodeQL
         uses: github/codeql-action/analyze@v4
