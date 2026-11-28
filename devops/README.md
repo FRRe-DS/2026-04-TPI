@@ -35,8 +35,8 @@ k6) y `docker` (build de la imagen con un `Dockerfile` nuevo), igual que en G13.
 Los resultados quedan en la pestaña *Actions*: el resumen de cada job y los artefactos (JUnit,
 SARIF). Las alertas de CodeQL también aparecen en *Security → Code scanning*.
 
-Los tests se corren igual en local con `npm test` (los tests estilo Jest de `src/busqueda/*.test.js`
-quedan fuera, como hasta ahora).
+El job corre los mismos archivos que `npm test` (`tests/`, `src/**/*.test.js` y
+`tests/TestSolicitud.js`), así que en local se prueban igual con `npm test`.
 
 ### Quality Gate de SAST
 
@@ -47,8 +47,9 @@ quedan fuera, como hasta ahora).
 ### Secretos
 
 `devops/ci/gitleaks.toml` excluye solo falsos positivos revisados a mano: valores de relleno de los
-archivos de ejemplo ("reemplazar…", "cambiar…") y los tokens falsos de
-`tests/comun/seguridad.test.js`.
+archivos de ejemplo ("reemplazar…", "cambiar…"), los tokens falsos de
+`tests/comun/seguridad.test.js` y el encabezado `Sec-WebSocket-Key` de la documentación del
+proyecto de investigación (es un valor aleatorio del protocolo WebSocket, no un secreto).
 
 **El job `secrets` falla hoy a propósito**: `.env.example` y `front/.env.example` tienen un
 `INTERNAL_API_TOKEN` y un `KEYCLOAK_ADMIN_CLIENT_SECRET` reales (commit `20b617c`, 25/11). Hay que

@@ -1,0 +1,125 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> asientos-service@1.0.0 test:tiempo-real
+> node --test tests/tiempo-real.test.js
+
+TAP version 13
+# Subtest: estrella: un bloqueo por REST llega a los dos sockets de su función y a ninguno de la otra
+ok 1 - estrella: un bloqueo por REST llega a los dos sockets de su función y a ninguno de la otra
+  ---
+  duration_ms: 290.654853
+  ...
+# GET /ws/sala/41?token=[REDACTADO] HTTP/1.1\\nHost: 127.0.0.1:35999\\nUpgrade: websocket\\nConnection: Upgrade\\nSec-WebSocket-Key: 2UklgKYA/ZOx0Yzu67H4Ig==\\nSec-WebSocket-Version: 13\\n\\nHTTP/1.1 101 Switching Protocols\\nUpgrade: websocket\\nConnection: Upgrade\\nSec-WebSocket-Accept: LICSjMRvHjfRHGsWMCAPjnnmGHc=
+# Subtest: estado_completo es el primer mensaje y coincide con la grilla REST
+ok 2 - estado_completo es el primer mensaje y coincide con la grilla REST
+  ---
+  duration_ms: 15.899654
+  ...
+# Subtest: reconexión recupera un cambio hecho mientras el cliente estaba desconectado
+ok 3 - reconexión recupera un cambio hecho mientras el cliente estaba desconectado
+  ---
+  duration_ms: 29.92565
+  ...
+# Subtest: emite la liberación manual y la venta con las versiones confirmadas
+ok 4 - emite la liberación manual y la venta con las versiones confirmadas
+  ---
+  duration_ms: 70.041994
+  ...
+# Subtest: el vencimiento natural en MySQL emite una sola liberación y deja el asiento libre por REST
+ok 5 - el vencimiento natural en MySQL emite una sola liberación y deja el asiento libre por REST
+  ---
+  duration_ms: 1924.215227
+  ...
+# Subtest: latido JSON: expulsa al cliente que no responde y mantiene al que envía pong
+ok 6 - latido JSON: expulsa al cliente que no responde y mantiene al que envía pong
+  ---
+  duration_ms: 268.892677
+  ...
+# Subtest: JWT ausente, con firma inválida o vencido cierra con 1008 sin registrar el token
+ok 7 - JWT ausente, con firma inválida o vencido cierra con 1008 sin registrar el token
+  ---
+  duration_ms: 32.478103
+  ...
+# Subtest: función inexistente responde HTTP 404 antes del upgrade
+ok 8 - función inexistente responde HTTP 404 antes del upgrade
+  ---
+  duration_ms: 3.395522
+  ...
+# Subtest: un error después del upgrade cierra con 1011 y limpia la sala
+ok 9 - un error después del upgrade cierra con 1011 y limpia la sala
+  ---
+  duration_ms: 6.988377
+  ...
+# Subtest: un mensaje por encima de maxPayload cierra con 1009
+ok 10 - un mensaje por encima de maxPayload cierra con 1009
+  ---
+  duration_ms: 12.517892
+  ...
+# Subtest: métricas autenticadas: conexión, grilla, ping excluido y ventana de polling
+ok 11 - métricas autenticadas: conexión, grilla, ping excluido y ventana de polling
+  ---
+  duration_ms: 1257.953603
+  ...
+# Subtest: contador conserva la ventana máxima y descarta registros anteriores al borde
+ok 12 - contador conserva la ventana máxima y descarta registros anteriores al borde
+  ---
+  duration_ms: 0.435706
+  ...
+# Subtest: durante la carga de grilla, el cambio posterior a la foto se entrega después de estado_completo
+ok 13 - durante la carga de grilla, el cambio posterior a la foto se entrega después de estado_completo
+  ---
+  duration_ms: 24.082541
+  ...
+# Subtest: si la foto ya incluye un cambio encolado, el servidor conserva una sola versión
+ok 14 - si la foto ya incluye un cambio encolado, el servidor conserva una sola versión
+  ---
+  duration_ms: 161.143881
+  ...
+# Subtest: un aviso con la fila de una transición posterior fuerza resincronización
+ok 15 - un aviso con la fila de una transición posterior fuerza resincronización
+  ---
+  duration_ms: 31.133085
+  ...
+# Subtest: el apagado ordenado cierra los sockets con 1000
+ok 16 - el apagado ordenado cierra los sockets con 1000
+  ---
+  duration_ms: 13.918558
+  ...
+1..16
+# tests 16
+# suites 0
+# pass 16
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4287.991199
+
+Servicio de Asientos con tiempo real escuchando en el puerto 40729
+$ BASE_URL=http://127.0.0.1:40729 node --test tests/tiempo-real.test.js
+TAP version 13
+{"evento":"ws_conexion","funcionId":41}
+{"evento":"ws_conexion","funcionId":42}
+{"evento":"ws_conexion","funcionId":41}
+{"evento":"ws_emision","funcionId":41,"tipo":"asiento_bloqueado","destinatarios":2,"encolados":0}
+{"evento":"ws_desconexion","funcionId":41,"codigo":1000}
+{"evento":"ws_desconexion","funcionId":41,"codigo":1000}
+{"evento":"ws_desconexion","funcionId":42,"codigo":1000}
+# Subtest: estrella: un bloqueo por REST llega a los dos sockets de su función y a ninguno de la otra
+ok 1 - estrella: un bloqueo por REST llega a los dos sockets de su función y a ninguno de la otra
+  ---
+  duration_ms: 238.579803
+  ...
+# GET /ws/sala/41?token=[REDACTADO] HTTP/1.1\\nHost: 127.0.0.1:40729\\nUpgrade: websocket\\nConnection: Upgrade\\nSec-WebSocket-Key: OqOFIC+n8BgvJkXg/qIBMQ==\\nSec-WebSocket-Version: 13\\n\\nHTTP/1.1 101 Switching Protocols\\nUpgrade: websocket\\nConnection: Upgrade\\nSec-WebSocket-Accept: fKYpqR7r8RdZRSxBPS014oIU8Sw=
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 386.836593
+{"evento":"ws_conexion","funcionId":41}
+{"evento":"ws_desconexion","funcionId":41,"codigo":1000}
+SIGTERM real: cierre WebSocket 1000, salida del proceso 0

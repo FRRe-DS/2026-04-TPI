@@ -1,0 +1,20 @@
+{
+  "name": "funciones-service",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Servicio de Funciones: catálogo de funciones (película, sala, horario)",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "db:init": "node scripts/init-db.js",
+    "token": "node scripts/generar-token.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.10",
+    "express": "^5.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "mysql2": "^3.24.6"
+  }
+}

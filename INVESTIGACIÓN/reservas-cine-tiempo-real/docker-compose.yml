@@ -1,0 +1,126 @@
+x-jwt-secret: &jwt-secret "${JWT_SECRET:-mi-secreto-compartido-2026}"
+
+services:
+  gateway:
+    build: ./gateway
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./frontend-cine/public:/usr/share/nginx/html:ro
+    depends_on:
+      frontend-cine:
+        condition: service_healthy
+      servicio-funciones:
+        condition: service_healthy
+      servicio-asientos:
+        condition: service_healthy
+    networks:
+      - red-interna
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  frontend-cine:
+    build: ./frontend-cine
+    environment:
+      JWT_SECRET: *jwt-secret
+    networks:
+      - red-interna
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login.html').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  servicio-funciones:
+    build: ./services/funciones
+    environment:
+      PORT: "3002"
+      DB_HOST: db-funciones
+      DB_PORT: "3306"
+      DB_USER: funciones_user
+      DB_PASSWORD: funciones_pass
+      DB_NAME: funciones_db
+      JWT_SECRET: *jwt-secret
+    depends_on:
+      db-funciones:
+        condition: service_healthy
+    networks:
+      - red-interna
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3002/api/funciones/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  db-funciones:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: funciones_db
+      MYSQL_USER: funciones_user
+      MYSQL_PASSWORD: funciones_pass
+    volumes:
+      - ./services/funciones/db:/docker-entrypoint-initdb.d:ro
+      - db_data_funciones:/var/lib/mysql
+    networks:
+      - red-interna
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_PASSWORD\" mysql --protocol=TCP -h 127.0.0.1 -u\"$$MYSQL_USER\" \"$$MYSQL_DATABASE\" -e 'SELECT id FROM funciones LIMIT 1' >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  servicio-asientos:
+    build: ./services/asientos
+    environment:
+      PORT: "3001"
+      DB_HOST: db-asientos
+      DB_PORT: "3306"
+      DB_USER: asientos_user
+      DB_PASSWORD: asientos_pass
+      DB_NAME: asientos_db
+      JWT_SECRET: *jwt-secret
+    depends_on:
+      db-asientos:
+        condition: service_healthy
+    networks:
+      - red-interna
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/asientos/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  db-asientos:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: asientos_db
+      MYSQL_USER: asientos_user
+      MYSQL_PASSWORD: asientos_pass
+    volumes:
+      - ./services/asientos/db:/docker-entrypoint-initdb.d:ro
+      - db_data_asientos:/var/lib/mysql
+    networks:
+      - red-interna
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_PASSWORD\" mysql --protocol=TCP -h 127.0.0.1 -u\"$$MYSQL_USER\" \"$$MYSQL_DATABASE\" -e 'SELECT id FROM asientos LIMIT 1' >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+networks:
+  red-interna:
+    driver: bridge
+
+volumes:
+  db_data_funciones:
+  db_data_asientos:

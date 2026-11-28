@@ -1,0 +1,43 @@
+v20.20.2
+/workspace/scratch/a3c01e98525f/work/runtime/mysql/bin/mysqld  Ver 8.4.9 for Linux on x86_64 (MySQL Community Server - GPL)
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> asientos-service@1.0.0 db:init
+> node scripts/init-db.js
+
+OK  schema.sql
+OK  seed.sql
+Asientos cargados: 288
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> funciones-service@1.0.0 db:init
+> node scripts/init-db.js
+
+OK  schema.sql
+OK  seed.sql
+Funciones cargadas: 3
+Usuarios MySQL y permisos por base: 2 creados
+Healthcheck MySQL asientos: exit 0 con usuario de aplicación
+Healthcheck MySQL funciones: exit 0 con usuario de aplicación
+nginx -t corregido adaptado a loopback: 0
+GET / 200 text/html
+GET /polling.html 200 text/html
+GET /styles.css 200 text/css
+GET /app.js 200 application/javascript
+GET /health sin token: 200
+GET /api/asientos/health sin token: 200
+GET /api/funciones/health sin token: 200
+Catálogo real: 200 3 funciones; JWT ausente/inválido: 401
+GET grilla REST funcionId=41: 200 96 asientos
+WebSocket por Nginx: funcionId=41, 96 asientos
+GET métricas: 200, conexionesActivas=3
+Bloqueo REST: 200; entregado a 2 clientes; otra función aislada
+Liberación REST: 204; recibida por ambos clientes
+Polling refleja la liberación: libre
+WebSocket con JWT inválido: cierre 1008
+Test estrella contra Nginx: PASS
+Ráfaga HTTP: {"200": 21, "429": 24} Retry-After=5
+Respuesta al detener Asientos: 503 {"codigo":"SERVICIO_NO_DISPONIBLE","mensaje":"El servicio no está disponible en este momento."}
+Asientos detenido: 503 SERVICIO_NO_DISPONIBLE
+Logs comprobados: JWT de prueba ausente
+RESULTADO: PASS

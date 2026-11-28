@@ -85,7 +85,7 @@ jobs:
           node --test \
             --test-reporter=spec --test-reporter-destination=stdout \
             --test-reporter=junit --test-reporter-destination=reports/junit-unit.xml \
-            "tests/**/*.test.js"
+            "tests/**/*.test.js" "src/**/*.test.js" tests/TestSolicitud.js
 
       - name: Resumen de tests
         if: ${{ !cancelled() }}

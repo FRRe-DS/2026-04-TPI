@@ -1,0 +1,29 @@
+v20.20.2
+/workspace/scratch/a3c01e98525f/work/runtime/mysql/bin/mysqld  Ver 8.4.9 for Linux on x86_64 (MySQL Community Server - GPL)
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> asientos-service@1.0.0 db:init
+> node scripts/init-db.js
+
+OK  schema.sql
+OK  seed.sql
+Asientos cargados: 288
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> funciones-service@1.0.0 db:init
+> node scripts/init-db.js
+
+OK  schema.sql
+OK  seed.sql
+Funciones cargadas: 3
+nginx -t original adaptado a loopback: 0
+GET /api/funciones: 200 funciones 3
+GET grilla REST funcionId=41: 200 asientos 96
+GET /api/metricas/conexiones: 404
+WS /ws/sala/41: funcionId recibido 42 asientos 3
+POST bloqueo del primer asiento recibido por WS: 404 NO_ENCONTRADO
+WS con token sin firma: estado_completo (aceptado por el mock)
+GET frontend /: 404
+GET /api/asientos/health sin token: 401
+Ráfaga HTTP: {"200": 17, "503": 28}
+Access log original incluye el JWT de la prueba: True

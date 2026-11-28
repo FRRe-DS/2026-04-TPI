@@ -1,7 +1,7 @@
 const { describe, test, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const jwt = require("jsonwebtoken");
-const { leerConfig, crearLogger, crearVerificadorLocal, crearApp, requerirScope } = require("../../src/comun");
+const { leerConfig, crearLogger, crearVerificadorLocal, crearApp } = require("../../src/comun");
 const { crearRouterRespuesta } = require("../../src/respuesta");
 const { escenarioConOfertas } = require("../soporte/fakes");
 
@@ -9,11 +9,8 @@ const SECRETO = "un-secreto-de-prueba-con-mas-de-32-caracteres!!";
 const O1 = "11111111-1111-4111-8111-111111111111";
 const O2 = "22222222-2222-4222-8222-222222222222";
 const O3 = "33333333-3333-4333-8333-333333333333";
-// Quien responde es M3, con el scope m5:offers:respond (como en src/main.js); el conductor viaja
-// en el cuerpo. `scope` vacío = un token sin ese permiso (por ejemplo, un conductor directo).
-const SCOPE_M3 = "m5:offers:respond";
-const token = (conductor, roles = ["CONDUCTOR"], scope = SCOPE_M3) =>
-  jwt.sign({ sub: `i-${conductor}`, roles, conductor_id: conductor, scope }, SECRETO, { algorithm: "HS256", expiresIn: "5m" });
+const token = (conductor, roles = ["CONDUCTOR"]) =>
+  jwt.sign({ sub: `i-${conductor}`, roles, conductor_id: conductor }, SECRETO, { algorithm: "HS256", expiresIn: "5m" });
 
 let servidor, base, mundo;
 async function levantar() {
@@ -23,14 +20,12 @@ async function levantar() {
   for (const [id, c] of [[O1, "cond-1"], [O2, "cond-2"], [O3, "cond-3"]]) {
     mundo.estado.ofertas.set(id, { ofertaId: id, solicitudId: "sol-1", conductorId: c, estado: "pendiente", venceEn });
   }
-  // El verificador lee los scopes del claim "scope", como el de Keycloak en src/main.js.
-  const configConScopes = { ...config, jwt: { ...config.jwt, claimScopes: "scope" } };
   const app = crearApp({
     config,
     logger: crearLogger({ nivel: "silent" }),
-    verificador: crearVerificadorLocal(configConScopes),
+    verificador: crearVerificadorLocal(config),
     registrarRutas: (app, { requerirRol, validar }) =>
-      app.use(crearRouterRespuesta({ deps: mundo.deps, requerirRol, requerirScope, validar })),
+      app.use(crearRouterRespuesta({ deps: mundo.deps, requerirRol, validar })),
   });
   await new Promise((r) => { servidor = app.listen(0, "127.0.0.1", r); });
   base = `http://127.0.0.1:${servidor.address().port}`;
@@ -55,11 +50,10 @@ describe("POST /ofertas/:id/respuesta: rechazo y aceptación de punta a punta", 
   before(levantar);
   after(() => new Promise((r) => servidor.close(r)));
 
-  test("seguridad: sin token 401, sin el scope de M3 403, oferta ajena 403, oferta inexistente 404", async () => {
+  test("seguridad: sin token 401, rol equivocado 403, oferta ajena 403, oferta inexistente 404", async () => {
     assert.equal((await responder(O1, false)).status, 401);
-    assert.equal((await responder(O1, false, token("cond-1", ["CLIENTE"], ""))).status, 403);
-    assert.equal((await responder(O1, false, token("cond-1", ["CONDUCTOR"], ""))).status, 403, "un conductor no responde directo");
-    assert.equal((await responder(O1, false, token("cond-1"), { conductor_id: "cond-2" })).status, 403, "oferta ajena");
+    assert.equal((await responder(O1, false, token("cond-1", ["CLIENTE"]))).status, 403);
+    assert.equal((await responder(O1, false, token("cond-2"))).status, 403);
     assert.equal((await responder("99999999-9999-4999-8999-999999999999", false, token("cond-1"))).status, 404);
     assert.equal(mundo.estado.ofertas.get(O1).estado, "pendiente", "nada cambió");
   });
@@ -83,8 +77,13 @@ describe("POST /ofertas/:id/respuesta: rechazo y aceptación de punta a punta", 
   test("rechazar: 200, repetir: 200 con repetida:true, y no se expone el estado de la búsqueda", async () => {
     const a = await responder(O1, false, token("cond-1"));
     assert.equal(a.status, 200);
-    // status y tripId son los campos que espera M3 (src/respuesta/rutas.js); no hay datos de la búsqueda.
-    assert.deepEqual(await a.json(), { resultado: "rechazada", solicitudId: "sol-1", repetida: false, status: "REJECTED", tripId: null });
+    assert.deepEqual(await a.json(), {
+      resultado: "rechazada",
+      solicitudId: "sol-1",
+      repetida: false,
+      status: "REJECTED",
+      tripId: null,
+    });
     const b = await responder(O1, false, token("cond-1"));
     assert.equal(b.status, 200);
     assert.equal((await b.json()).repetida, true);

@@ -28,6 +28,7 @@ const { procesarCancelacionM6 } = require("./integraciones/m6Cancelaciones");
 const { iniciarConsumidorM6 } = require("./integraciones/m6Consumer");
 const { crearOutboxM8 } = require("./integraciones/m8Outbox");
 const { crearRouterRespuesta } = require("./respuesta/rutas");
+const { crearRouterConsulta, crearConsultasPrisma } = require("./respuesta/rutasConsulta");
 const { construirIdentidad, autenticar, requerirRol, requerirScope } = require("./comun/autenticacion");
 const { obtenerTokenServicio } = require("./comun/tokenServicio");
 const { TipoEvento } = require("./comun/estados");
@@ -452,6 +453,12 @@ function crearApp({ prisma, deps, verificador, estimarTarifa, validarCliente }) 
   app.locals.despacharSolicitud = (solicitud, requestLogger = logger) => {
     if (despachosEnCurso.has(solicitud.solicitudId)) return Promise.resolve({ resultado: "ya_en_curso" });
     despachosEnCurso.add(solicitud.solicitudId);
+    if (typeof deps.solicitudes?.iniciarBusqueda === "function") {
+      return deps.solicitudes.iniciarBusqueda(solicitud.solicitudId)
+        .then(() => iniciarDespacho({ solicitud }, deps))
+        .catch((error) => requestLogger.error({ err: error, solicitudId: solicitud.solicitudId }, "no se pudo iniciar el despacho; se reintentará"))
+        .finally(() => despachosEnCurso.delete(solicitud.solicitudId));
+    }
     return iniciarDespacho({ solicitud }, deps)
       .catch((error) => requestLogger.error({ err: error, solicitudId: solicitud.solicitudId }, "no se pudo iniciar el despacho; se reintentará"))
       .finally(() => despachosEnCurso.delete(solicitud.solicitudId));
@@ -495,7 +502,12 @@ function crearApp({ prisma, deps, verificador, estimarTarifa, validarCliente }) 
   });
 
   app.use("/solicitudes", (req, res, next) => {
-    if (req.path === "/desde-reserva") return next();
+    if (
+      req.path === "/desde-reserva" ||
+      (req.method === "GET" && /^\/[^/]+\/(ofertas|historial)$/.test(req.path))
+    ) {
+      return next();
+    }
     return autenticarApi(req, res, next);
   });
 
@@ -801,7 +813,12 @@ function crearApp({ prisma, deps, verificador, estimarTarifa, validarCliente }) 
       requerirScope,
       validar: require("./comun/validacion").validar,
     });
-    app.use("/api/v1", autenticar(verificador), router);
+    const routerConsulta = crearRouterConsulta({
+      consultas: crearConsultasPrisma(prisma),
+      requerirRol,
+      validar: require("./comun/validacion").validar,
+    });
+    app.use("/api/v1", autenticar(verificador), router, routerConsulta);
   }
 
   // Traduce errores internos a respuestas HTTP sin filtrar trazas ni detalles sensibles.
