@@ -1,8 +1,9 @@
-# Variables de entorno
+﻿# Variables de entorno
 .env
 **/.env
 
 # No subir dependencias
 node_modules/
-
 DIV.md
+# Carpeta local AGY
+AGY/
