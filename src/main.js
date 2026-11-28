@@ -453,6 +453,12 @@ function crearApp({ prisma, deps, verificador, estimarTarifa, validarCliente }) 
   app.locals.despacharSolicitud = (solicitud, requestLogger = logger) => {
     if (despachosEnCurso.has(solicitud.solicitudId)) return Promise.resolve({ resultado: "ya_en_curso" });
     despachosEnCurso.add(solicitud.solicitudId);
+    if (typeof deps.solicitudes?.iniciarBusqueda === "function") {
+      return deps.solicitudes.iniciarBusqueda(solicitud.solicitudId)
+        .then(() => iniciarDespacho({ solicitud }, deps))
+        .catch((error) => requestLogger.error({ err: error, solicitudId: solicitud.solicitudId }, "no se pudo iniciar el despacho; se reintentará"))
+        .finally(() => despachosEnCurso.delete(solicitud.solicitudId));
+    }
     return iniciarDespacho({ solicitud }, deps)
       .catch((error) => requestLogger.error({ err: error, solicitudId: solicitud.solicitudId }, "no se pudo iniciar el despacho; se reintentará"))
       .finally(() => despachosEnCurso.delete(solicitud.solicitudId));

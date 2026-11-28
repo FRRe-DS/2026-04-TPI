@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
@@ -31,7 +31,7 @@
           <p class="subtitle">Consultá las solicitudes registradas en la lista de pendientes.</p>
         </div>
         <div class="header-actions">
-          <a class="primary-link" href="/ventana-de-solicitud.html"><span>＋</span> Nueva solicitud</a>
+          <a class="primary-link" data-role-link="cliente" href="/ventana-de-solicitud.html"><span>＋</span> Nueva solicitud</a>
           <div class="client-chip">
             <span class="client-avatar" id="client-avatar">EN</span>
             <span>
@@ -73,8 +73,8 @@
         <div id="empty-state" class="empty-state" hidden>
           <div class="empty-icon">▤</div>
           <h3>No hay solicitudes para mostrar</h3>
-          <p>Creá una solicitud desde “Nueva solicitud” y después actualizá este listado.</p>
-          <a class="primary-link" href="/ventana-de-solicitud.html">Crear primera solicitud</a>
+          <p>Creá una solicitud desde Nueva solicitud y después actualizá este listado.</p>
+          <a class="primary-link" data-role-link="cliente" href="/ventana-de-solicitud.html">Crear primera solicitud</a>
         </div>
         <div class="list-footer"><span id="shown-count">0 solicitudes</span><span>Datos obtenidos de <code>GET /api/solicitudes/pendientes</code></span></div>
       </section>
