@@ -63,7 +63,10 @@ describe("outbox de eventos de viaje a M8", () => {
     assert.deepEqual(filas.map((f) => f.tipo), ["VIAJE_SOLICITADO", "VIAJE_ASIGNADO"]);
     assert.ok(filas.every((f) => f.cuerpo.viajeId === "v1" && f.cuerpo.origen === "M5"));
     assert.equal(filas[0].cuerpo.ocurridoEn, "2026-11-26T10:00:00.000Z");
-    assert.equal(filas[1].cuerpo.detalle.conductorId, "c1");
+    // El contrato oficial de M8 (DetalleEvento) no admite campos extra: el conductor no viaja en el
+    // detalle (se sacó en el commit 2d4634d).
+    assert.equal(filas[1].cuerpo.detalle.conductorId, undefined);
+    assert.equal(filas[1].cuerpo.detalle.tipoVehiculo, datos.datosViaje.tipoVehiculo);
     assert.equal(filas[1].cuerpo.destinatarios[0].email, "cliente@example.test");
   });
 

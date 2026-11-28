@@ -5,6 +5,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "node src/main.js",
+    "test": "node --test \"tests/**/*.test.js\"",
     "db:generate": "prisma generate --config bd/prisma7.config.ts",
     "db:push": "prisma db push --config bd/prisma7.config.ts"
   },

@@ -1,0 +1,22 @@
+# Configuración de gitleaks para G04: reglas por defecto + excepciones revisadas a mano.
+#
+# Solo se excluyen falsos positivos verificados (27/11/2026). Los secretos reales
+# (INTERNAL_API_TOKEN y KEYCLOAK_ADMIN_CLIENT_SECRET en los .env.example) NO se excluyen:
+# el job `secrets` tiene que fallar hasta que se roten y se reemplacen por valores de ejemplo.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Valores de relleno en archivos de ejemplo (no son secretos)"
+regexTarget = "secret"
+regexes = [
+  '''(?i)^reemplaz''',
+  '''(?i)^cambi''',
+]
+
+[[allowlists]]
+description = "Tests de autenticación: arman encabezados Authorization y tokens falsos a propósito"
+paths = [
+  '''^tests/comun/seguridad\.test\.js$''',
+]
