@@ -298,10 +298,11 @@ Stack tecnológico:
   (commit `2098401`). También corrigió el error del despacho por su cuenta, antes de que se le
   informara (commit `050ebda`), y movió la consulta de ofertas a `/api/v1`.
 - Se incorporó `main` a las dos branches de DevOps (merge, sin reescribir historia). En los tests
-  y en `package.json` se adoptaron las versiones de G04 y se descartaron las de DevOps: del PR #1
-  solo queda, fuera de `devops/` y `.github/`, el renombre de `clienteM8.js`, que sigue siendo
-  necesario en Linux. Con eso pasan los 208 tests. El job `unit-tests` corre los mismos archivos
-  que su `npm test`.
+  y en `package.json` se adoptaron las versiones de G04 y se descartaron las de DevOps. El job
+  `unit-tests` corre los mismos archivos que su `npm test`.
+- Más tarde G04 borró `ClienteM8.js` y su test (commit `139ee82`): era código sin uso. Se aceptó el
+  borrado en lugar del renombre, así que **el PR #1 ya no modifica código de G04**: solo agrega
+  `devops/` y `.github/`. Con el `main` actualizado pasan los 207 tests.
 - Contra el código actual de G04, el E2E pasa completo (35/35): queda confirmado con MySQL real
   que el arreglo funciona, incluida la asignación única con dos aceptaciones simultáneas. El
   adaptador de k6 se actualizó a la ruta nueva de ofertas. La ruta vieja
@@ -322,7 +323,7 @@ Stack tecnológico:
 | Objetivo | Completar el CI de G04 con E2E y Docker |
 | Decisiones/acuerdos | El E2E verifica el comportamiento correcto aunque falle: el error de despacho es de lógica funcional y lo corrige G04 (lo hizo el mismo día, en `050ebda`). Ante el conflicto con `main` se adoptan los tests de G04, que son los dueños. El SAST analiza solo el código de M5 (`INVESTIGACIÓN/` excluida de CodeQL). Mocks y scripts compartidos idénticos en los dos repositorios |
 | Repositorio/issue/PR | G04, branch `devops/e2e` (PR a abrir) y PR #1 actualizado con `main`. G13, branch `devops/ci` (PR #14): mocks y script de tokens actualizados |
-| Evidencia | E2E local de G04 antes del arreglo: 25/29 (las 4 que fallan son las del error de despacho); con la llamada agregada en una copia descartable: 35/35; contra el `main` actual de G04: 35/35. Tests de G04 con `main` incorporado: 208/208. E2E de G13 con los mocks compartidos: 45/45. Imagen de G04: `healthy`, usuario `node` |
+| Evidencia | E2E local de G04 antes del arreglo: 25/29 (las 4 que fallan son las del error de despacho); con la llamada agregada en una copia descartable: 35/35; contra el `main` actual de G04 (`990310f`): 35/35, también contra la imagen Docker. Tests de G04 con `main` incorporado: 207/207. E2E de G13 con los mocks compartidos: 45/45. Imagen de G04: `healthy`, usuario `node` |
 | Resultado | CI de G04 con los seis jobs y el E2E en verde. El error de despacho quedó detectado, localizado y corregido |
 | Dificultad o bloqueo | Cambios de G04 en paralelo generaron conflictos con los PR abiertos. La imagen pesa ~800 MB porque el CLI de Prisma queda instalado: hay que achicarla antes del despliegue |
 | Siguiente acción | Subir las dos branches actualizadas, abrir el PR del E2E en G04 y avisarle a G04 de la ruta vieja de ofertas |
