@@ -1,0 +1,11 @@
+GET /ws/sala/41?token=[REDACTADO] HTTP/1.1
+Host: 127.0.0.1:40729
+Upgrade: websocket
+Connection: Upgrade
+Sec-WebSocket-Key: OqOFIC+n8BgvJkXg/qIBMQ==
+Sec-WebSocket-Version: 13
+
+HTTP/1.1 101 Switching Protocols
+Upgrade: websocket
+Connection: Upgrade
+Sec-WebSocket-Accept: fKYpqR7r8RdZRSxBPS014oIU8Sw=

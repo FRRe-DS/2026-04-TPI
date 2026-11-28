@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101522">
+  <title>Iniciar sesión | Cine/Live</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="login.js"></script>
+</head>
+<body class="login-page">
+  <header class="topbar">
+    <a class="brand" href="index.html" aria-label="Cine en tiempo real, inicio">
+      <span class="brand-mark" aria-hidden="true">C</span>
+      <span>CINE<span class="brand-light">/LIVE</span></span>
+    </a>
+  </header>
+  <main class="login-shell">
+    <section class="panel login-card" aria-labelledby="loginTitle">
+      <h1 id="loginTitle">Iniciá sesión</h1>
+      <p class="login-intro">Entrá con tu cuenta para reservar un asiento.</p>
+      <form id="loginForm" action="/sesion" method="post">
+        <div class="login-field">
+          <label for="usuario">Usuario</label>
+          <input id="usuario" name="usuario" type="text" autocapitalize="none"
+                 spellcheck="false" autocomplete="username" required maxlength="64">
+        </div>
+        <div class="login-field">
+          <label for="clave">Contraseña</label>
+          <input id="clave" name="clave" type="password" autocomplete="current-password" required maxlength="128">
+        </div>
+        <p id="loginMensaje" class="login-mensaje" role="status" aria-live="polite"></p>
+        <button id="ingresar" class="button button-primary button-wide" type="submit">Ingresar</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

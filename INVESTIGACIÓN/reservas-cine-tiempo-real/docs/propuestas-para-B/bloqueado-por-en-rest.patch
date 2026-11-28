@@ -1,0 +1,12 @@
+diff --git a/services/asientos/src/bloqueo.js b/services/asientos/src/bloqueo.js
+--- a/services/asientos/src/bloqueo.js
++++ b/services/asientos/src/bloqueo.js
+@@ -17,7 +17,7 @@
+   return {
+     ...base,
+     estado: r.estado,
+-    bloqueadoPor: r.bloqueado_por,
++    bloqueadoPor: r.estado === 'bloqueado' ? r.bloqueado_por : null,
+     bloqueadoHasta: r.bloqueado_hasta ? r.bloqueado_hasta.toISOString() : null,
+   };
+ }

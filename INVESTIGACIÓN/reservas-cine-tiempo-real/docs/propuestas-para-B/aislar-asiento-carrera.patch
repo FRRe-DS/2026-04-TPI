@@ -1,0 +1,21 @@
+diff --git a/services/asientos/scripts/test-carrera.js b/services/asientos/scripts/test-carrera.js
+--- a/services/asientos/scripts/test-carrera.js
++++ b/services/asientos/scripts/test-carrera.js
+@@ -11,7 +11,7 @@
+
+ async function idAsiento() {
+   const [[a]] = await pool.execute(
+-    "SELECT id FROM asientos WHERE funcion_id = 42 AND fila = 'F' AND numero = 5"
++    "SELECT id FROM asientos WHERE funcion_id = 42 AND fila = 'F' AND numero = 7"
+   );
+   return a.id;
+ }
+@@ -46,7 +46,7 @@
+   const id = await idAsiento();
+   const lineas = [
+     `Prueba de condición de carrera - ${new Date().toISOString()}`,
+-    `Asiento F5 de la función 42 (id ${id}), ${USUARIOS} usuarios a la vez`,
++    `Asiento F7 de la función 42 (id ${id}), ${USUARIOS} usuarios a la vez`,
+     '',
+     await correr('Ingenua (leer y después escribir)', bloquearIngenuo, id) + '   <- MAL: varios creen que lo ganaron',
+     await correr('Condicionada (un solo UPDATE)   ', bloquearAsiento, id) + '   <- BIEN: gana exactamente uno',

@@ -1,0 +1,727 @@
+openapi: 3.0.3
+info:
+  title: Reserva de asientos en tiempo real - API Gateway + WebSockets
+  version: 1.0.0
+  description: |
+    Contrato del TP de investigación (Desarrollo de Software 2026): Tema 5 (API Gateway y
+    reverse proxy) + Tema 19 (WebSockets y actualización en tiempo real).
+
+    **Todo el tráfico entra por el gateway** (Nginx). Los servicios internos no se exponen.
+
+    Ruteo del gateway:
+    - `/api/funciones/**` -> servicio de Funciones
+    - `/api/asientos/**`  -> servicio de Asientos
+    - `/api/metricas/**`  -> servicio de Asientos (módulo de tiempo real)
+    - `/ws/sala/{funcionId}` -> servicio de Asientos (WebSocket, requiere reenviar `Upgrade`)
+    - `/health` -> responde el propio gateway
+
+    Responsables sugeridos (campo `x-responsable` en cada tag):
+    - A: gateway y despliegue
+    - B: Funciones y Asientos (REST, concurrencia)
+    - C: servidor WebSocket, polling y métricas
+    - D: frontend (consume todo lo anterior)
+
+    Convenciones:
+    - Estados de asiento en snake_case minúscula: `libre`, `bloqueado`, `vendido`.
+    - Fechas en ISO 8601 UTC.
+    - Todos los errores usan el esquema `Error`.
+    - Autenticación con JWT en `Authorization: Bearer <token>`.
+servers:
+  - url: http://localhost:8080
+    description: Gateway local (docker compose)
+
+tags:
+  - name: Gateway
+    description: Endpoints propios del gateway.
+    x-responsable: A
+  - name: Funciones
+    description: Catálogo de funciones (película, sala, horario).
+    x-responsable: B
+  - name: Asientos
+    description: Grilla de asientos, bloqueo y confirmación. Aquí está la concurrencia.
+    x-responsable: B
+  - name: Tiempo real
+    description: WebSocket de la sala y endpoint de polling para comparar.
+    x-responsable: C
+  - name: Métricas
+    description: Datos para la comparación WebSocket vs polling.
+    x-responsable: C
+
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      tags: [Gateway]
+      summary: Estado del gateway
+      description: Lo responde el gateway sin consultar a los servicios. Útil para health checks de Docker.
+      security: []
+      responses:
+        '200':
+          description: Gateway activo.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  estado:
+                    type: string
+                    example: ok
+                required: [estado]
+
+  /api/funciones/health:
+    get:
+      tags: [Funciones]
+      summary: Estado del servicio de Funciones
+      security: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Salud'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+
+  /api/asientos/health:
+    get:
+      tags: [Asientos]
+      summary: Estado del servicio de Asientos
+      security: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Salud'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+
+  /api/funciones:
+    get:
+      tags: [Funciones]
+      summary: Listar funciones
+      description: Devuelve las funciones disponibles. Se puede filtrar por película.
+      parameters:
+        - name: pelicula
+          in: query
+          required: false
+          description: Texto a buscar dentro del título de la película.
+          schema:
+            type: string
+            example: matrix
+      responses:
+        '200':
+          description: Lista de funciones.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Funcion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+
+  /api/funciones/{funcionId}:
+    get:
+      tags: [Funciones]
+      summary: Obtener una función
+      parameters:
+        - $ref: '#/components/parameters/FuncionId'
+      responses:
+        '200':
+          description: Datos de la función.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Funcion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+
+  /api/asientos:
+    get:
+      tags: [Asientos]
+      summary: Obtener la grilla completa de una función
+      description: |
+        Devuelve el estado actual de todos los asientos de la función.
+        También es el endpoint que usa la versión con **polling** (cada 2 s) y el que
+        puede llamar el cliente para resincronizarse si lo necesita.
+        Un asiento con `bloqueadoHasta` vencido se devuelve como `libre`.
+      parameters:
+        - name: funcionId
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            example: 42
+      responses:
+        '200':
+          description: Grilla de asientos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Grilla'
+        '400':
+          $ref: '#/components/responses/SolicitudInvalida'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+
+  /api/asientos/{asientoId}:
+    get:
+      tags: [Asientos]
+      summary: Obtener un asiento
+      parameters:
+        - $ref: '#/components/parameters/AsientoId'
+      responses:
+        '200':
+          description: Estado del asiento.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Asiento'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+
+  /api/asientos/{asientoId}/bloqueo:
+    post:
+      tags: [Asientos]
+      summary: Bloquear un asiento temporalmente
+      description: |
+        Intenta pasar el asiento a `bloqueado` con una **única actualización condicionada**
+        ("solo si sigue libre, o si su bloqueo anterior ya venció"). Si dos personas
+        llegan a la vez, la base de datos deja pasar solo a una (control de concurrencia).
+
+        - Éxito: 200 con el bloqueo y su vencimiento (por defecto 60 segundos).
+        - Perdió la carrera, o el asiento ya está bloqueado o vendido: 409.
+
+        Si el bloqueo tiene éxito, el servidor emite `asiento_bloqueado` por WebSocket
+        a todos los clientes de la función.
+        El usuario se toma del token (claim `sub`), no del cuerpo.
+      parameters:
+        - $ref: '#/components/parameters/AsientoId'
+      responses:
+        '200':
+          description: Asiento bloqueado para el usuario autenticado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Asiento'
+              example:
+                id: 1017
+                funcionId: 42
+                fila: F
+                numero: 5
+                estado: bloqueado
+                bloqueadoPor: usuario-123
+                bloqueadoHasta: '2026-11-10T12:31:00Z'
+                version: 8
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          description: Conflicto. El asiento ya está bloqueado por otra persona o vendido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                codigo: ASIENTO_NO_DISPONIBLE
+                mensaje: El asiento F5 ya fue bloqueado por otra persona.
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+    delete:
+      tags: [Asientos]
+      summary: Liberar un bloqueo propio
+      description: |
+        Libera el asiento si el bloqueo es del usuario autenticado.
+        Emite `asiento_liberado` por WebSocket.
+      parameters:
+        - $ref: '#/components/parameters/AsientoId'
+      responses:
+        '204':
+          description: Asiento liberado.
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          description: El bloqueo pertenece a otra persona.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                codigo: BLOQUEO_AJENO
+                mensaje: No podés liberar un asiento bloqueado por otra persona.
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+
+  /api/asientos/{asientoId}/confirmacion:
+    post:
+      tags: [Asientos]
+      summary: Confirmar la compra de un asiento bloqueado
+      description: |
+        Pasa el asiento de `bloqueado` a `vendido`. Solo es válido si el bloqueo es del
+        usuario autenticado y no venció. Emite `asiento_vendido` por WebSocket.
+      parameters:
+        - $ref: '#/components/parameters/AsientoId'
+      responses:
+        '200':
+          description: Asiento vendido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Asiento'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          description: El bloqueo pertenece a otra persona.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          description: El bloqueo venció o el asiento no está bloqueado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                codigo: BLOQUEO_VENCIDO
+                mensaje: El bloqueo venció. Volvé a elegir el asiento.
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+
+  /ws/sala/{funcionId}:
+    get:
+      tags: [Tiempo real]
+      summary: Conexión WebSocket de la sala de una función
+      description: |
+        Abre una conexión WebSocket (HTTP `Upgrade`). **OpenAPI no describe los mensajes
+        de un WebSocket**, así que se documentan acá y sus esquemas están en
+        `components/schemas` (`Mensaje*`).
+
+        **Autenticación:** los navegadores no pueden enviar el encabezado `Authorization`
+        en un WebSocket, por eso el token va en el parámetro `token`.
+        El gateway lo valida **al conectar** (no en cada mensaje). Cuidado: no registrar
+        la URL completa en los logs, porque contiene el token.
+
+        **Gateway:** debe reenviar `Upgrade` y `Connection` y tener un timeout de lectura
+        alto para no cortar conexiones inactivas.
+
+        **Mensajes servidor -> cliente** (JSON, campo `tipo`):
+        1. `estado_completo`: se envía **al conectar y al reconectar**. Trae la grilla entera.
+        2. `asiento_bloqueado`, `asiento_liberado`, `asiento_vendido`: cambios puntuales.
+        3. `ping`: latido periódico; el cliente responde `pong`.
+
+        **Mensajes cliente -> servidor:**
+        - `pong`: respuesta al latido.
+
+        **Reconexión:** el cliente reintenta con espera creciente (1 s, 2 s, 4 s, tope 30 s).
+        Al reconectar recibe de nuevo `estado_completo`, así no depende de haber recibido
+        todos los mensajes anteriores.
+
+        **Códigos de cierre:** 1000 cierre normal, 1008 token inválido o vencido,
+        1011 error interno del servidor.
+      parameters:
+        - $ref: '#/components/parameters/FuncionId'
+        - name: token
+          in: query
+          required: true
+          description: JWT del usuario.
+          schema:
+            type: string
+        - name: Upgrade
+          in: header
+          required: true
+          schema:
+            type: string
+            enum: [websocket]
+        - name: Connection
+          in: header
+          required: true
+          schema:
+            type: string
+            enum: [Upgrade]
+      security: []
+      responses:
+        '101':
+          description: Cambio de protocolo a WebSocket aceptado.
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '502':
+          $ref: '#/components/responses/ServicioNoDisponible'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+
+  /api/metricas/conexiones:
+    get:
+      tags: [Métricas]
+      summary: Conexiones WebSocket activas y mensajes emitidos
+      description: Datos del servidor de tiempo real para la comparación con polling.
+      responses:
+        '200':
+          description: Métricas actuales.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricasConexiones'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+
+  /api/metricas/solicitudes:
+    get:
+      tags: [Métricas]
+      summary: Solicitudes recibidas por el endpoint de polling
+      description: |
+        Cuenta cuántas veces se consultó `GET /api/asientos?funcionId=...` en la última
+        ventana de tiempo. Se compara contra los mensajes emitidos por WebSocket.
+      parameters:
+        - name: ventanaSegundos
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 3600
+            default: 60
+      responses:
+        '200':
+          description: Solicitudes en la ventana indicada.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ventanaSegundos:
+                    type: integer
+                    example: 60
+                  solicitudesPolling:
+                    type: integer
+                    example: 90
+                required: [ventanaSegundos, solicitudesPolling]
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    FuncionId:
+      name: funcionId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+        example: 42
+    AsientoId:
+      name: asientoId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+        example: 1017
+
+  responses:
+    Salud:
+      description: Servicio activo.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              estado:
+                type: string
+                example: ok
+            required: [estado]
+    SolicitudInvalida:
+      description: Parámetros faltantes o con formato inválido.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: SOLICITUD_INVALIDA
+            mensaje: El parámetro funcionId es obligatorio.
+    NoAutenticado:
+      description: Falta el token o es inválido o vencido. Lo rechaza el gateway.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: NO_AUTENTICADO
+            mensaje: Token ausente o inválido.
+    NoEncontrado:
+      description: El recurso no existe.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: NO_ENCONTRADO
+            mensaje: No existe el recurso solicitado.
+    DemasiadasSolicitudes:
+      description: Se superó el límite de solicitudes por IP. Lo responde el gateway.
+      headers:
+        Retry-After:
+          description: Segundos que hay que esperar antes de reintentar.
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: LIMITE_EXCEDIDO
+            mensaje: Demasiadas solicitudes. Intentá de nuevo en unos segundos.
+    ServicioNoDisponible:
+      description: |
+        El servicio de destino está caído o no responde. Lo responde el gateway con un
+        mensaje controlado (en vez de un error crudo).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: SERVICIO_NO_DISPONIBLE
+            mensaje: El servicio no está disponible en este momento.
+
+  schemas:
+    EstadoAsiento:
+      type: string
+      enum: [libre, bloqueado, vendido]
+
+    Funcion:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 42
+        pelicula:
+          type: string
+          example: Matrix
+        sala:
+          type: string
+          example: Sala 3
+        horario:
+          type: string
+          format: date-time
+          example: '2026-11-12T21:30:00Z'
+        filas:
+          type: integer
+          description: Cantidad de filas de la sala.
+          example: 8
+        asientosPorFila:
+          type: integer
+          example: 12
+      required: [id, pelicula, sala, horario, filas, asientosPorFila]
+
+    Asiento:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1017
+        funcionId:
+          type: integer
+          example: 42
+        fila:
+          type: string
+          example: F
+        numero:
+          type: integer
+          example: 5
+        estado:
+          $ref: '#/components/schemas/EstadoAsiento'
+        bloqueadoPor:
+          type: string
+          nullable: true
+          description: Identificador del usuario que lo bloqueó. Nulo si no está bloqueado.
+        bloqueadoHasta:
+          type: string
+          format: date-time
+          nullable: true
+          description: Vencimiento del bloqueo. Nulo si no está bloqueado.
+        version:
+          type: integer
+          description: Se incrementa con cada cambio. Sirve para la actualización condicionada.
+          example: 8
+      required: [id, funcionId, fila, numero, estado, version]
+
+    Grilla:
+      type: object
+      properties:
+        funcionId:
+          type: integer
+          example: 42
+        generadoEn:
+          type: string
+          format: date-time
+          description: Momento en que el servidor armó la respuesta.
+        asientos:
+          type: array
+          items:
+            $ref: '#/components/schemas/Asiento'
+      required: [funcionId, generadoEn, asientos]
+
+    Error:
+      type: object
+      properties:
+        codigo:
+          type: string
+          example: ASIENTO_NO_DISPONIBLE
+        mensaje:
+          type: string
+      required: [codigo, mensaje]
+
+    MetricasConexiones:
+      type: object
+      properties:
+        conexionesActivas:
+          type: integer
+          example: 3
+        conexionesPorFuncion:
+          type: object
+          description: Conexiones activas agrupadas por id de función.
+          additionalProperties:
+            type: integer
+          example:
+            '42': 3
+        mensajesEmitidos:
+          type: integer
+          description: Total de mensajes enviados desde que arrancó el servidor.
+          example: 17
+      required: [conexionesActivas, conexionesPorFuncion, mensajesEmitidos]
+
+    # ---- Mensajes del WebSocket (no los valida OpenAPI; se documentan acá) ----
+    MensajeEstadoCompleto:
+      type: object
+      description: Servidor -> cliente. Al conectar y al reconectar.
+      properties:
+        tipo:
+          type: string
+          enum: [estado_completo]
+        grilla:
+          $ref: '#/components/schemas/Grilla'
+      required: [tipo, grilla]
+
+    MensajeAsientoBloqueado:
+      type: object
+      description: Servidor -> cliente. Alguien bloqueó un asiento.
+      properties:
+        tipo:
+          type: string
+          enum: [asiento_bloqueado]
+        asientoId:
+          type: integer
+        fila:
+          type: string
+        numero:
+          type: integer
+        bloqueadoHasta:
+          type: string
+          format: date-time
+        version:
+          type: integer
+      required: [tipo, asientoId, fila, numero, bloqueadoHasta, version]
+
+    MensajeAsientoLiberado:
+      type: object
+      description: Servidor -> cliente. Se liberó un asiento (a mano o por vencimiento).
+      properties:
+        tipo:
+          type: string
+          enum: [asiento_liberado]
+        asientoId:
+          type: integer
+        fila:
+          type: string
+        numero:
+          type: integer
+        motivo:
+          type: string
+          enum: [liberado_por_usuario, bloqueo_vencido]
+        version:
+          type: integer
+      required: [tipo, asientoId, fila, numero, motivo, version]
+
+    MensajeAsientoVendido:
+      type: object
+      description: Servidor -> cliente. Se confirmó la compra de un asiento.
+      properties:
+        tipo:
+          type: string
+          enum: [asiento_vendido]
+        asientoId:
+          type: integer
+        fila:
+          type: string
+        numero:
+          type: integer
+        version:
+          type: integer
+      required: [tipo, asientoId, fila, numero, version]
+
+    MensajePing:
+      type: object
+      description: Servidor -> cliente. Latido para detectar conexiones muertas.
+      properties:
+        tipo:
+          type: string
+          enum: [ping]
+      required: [tipo]
+
+    MensajePong:
+      type: object
+      description: Cliente -> servidor. Respuesta al latido.
+      properties:
+        tipo:
+          type: string
+          enum: [pong]
+      required: [tipo]
