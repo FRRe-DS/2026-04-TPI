@@ -36,6 +36,25 @@ async function explicarOfertaNoVigente(solicitudId, deps) {
   return { resultado: R.OFERTA_NO_VIGENTE };
 }
 
+const cacheViajes = new WeakMap();
+
+function notificarAsignacionUnaVez(deps, dto) {
+  let mapa = cacheViajes.get(deps);
+  if (!mapa) {
+    mapa = new Map();
+    cacheViajes.set(deps, mapa);
+  }
+  if (!mapa.has(dto.solicitudId)) {
+    const prom = Promise.resolve()
+      .then(() => deps.notificaciones.conductorAsignado(dto))
+      .catch((err) => {
+        mapa.delete(dto.solicitudId);
+        throw err;
+      });
+    mapa.set(dto.solicitudId, prom);
+  }
+  return mapa.get(dto.solicitudId);
+}
 // Caso "repetición": el MISMO conductor ya ganó (reintento o doble clic). Devolvemos
 // el mismo éxito sin repetir efectos ni avisos. Si no, devolvemos el resultado original.
 async function resolverRepeticion({ ofertaId, conductorId, solicitudId, resultadoOriginal }, deps) {
@@ -48,8 +67,8 @@ async function resolverRepeticion({ ofertaId, conductorId, solicitudId, resultad
       solicitud.estado === EstadoSolicitud.ASIGNADA &&
       solicitud.conductorAsignadoId === conductorId
     ) {
-      const tripId = await deps.notificaciones.conductorAsignado({ solicitudId, conductorId, ofertaId });
-      return { resultado: R.ASIGNADA, solicitudId, conductorId, ofertaId, repetida: true, tripId };
+      const tripId = solicitud.tripId ?? await notificarAsignacionUnaVez(deps, { solicitudId, conductorId, ofertaId });
+      return { resultado: R.ASIGNADA, solicitudId, conductorId, ofertaId, repetida: true, ...(tripId ? { tripId } : {}) };
     }
   }
   return { ...resultadoOriginal, solicitudId };
@@ -150,7 +169,7 @@ async function procesarAceptacion({ ofertaId, conductorId }, deps) {
     deps.cacheOfertas.eliminar([ofertaId, ...canceladas.map((c) => c.ofertaId)])
   );
   await intentar("conductorAsignado", async () => {
-    tripId = await deps.notificaciones.conductorAsignado({ solicitudId, conductorId, ofertaId });
+    tripId = await notificarAsignacionUnaVez(deps, { solicitudId, conductorId, ofertaId });
   });
   // Se cierra la reserva temporal en M4 de todos los que sigan reservados (con o sin oferta, el
   // ganador incluido; menos los que ya salieron por rechazo o vencimiento). Que el ganador pase a

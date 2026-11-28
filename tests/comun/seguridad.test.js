@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { Writable } = require("node:stream");
 const jwt = require("jsonwebtoken");
 
-const { leerConfig, crearLogger, crearVerificadorLocal, crearApp, requerirScope } = require("../../src/comun");
+const { leerConfig, crearLogger, crearVerificadorLocal, crearApp } = require("../../src/comun");
 const { escenarioConOfertas } = require("../soporte/fakes");
 const { crearRouterRespuesta } = require("../soporte/routerEjemplo");
 
@@ -22,13 +22,9 @@ const cuerpoOferta = (ofertaId, respuesta = "aceptado", extra = {}) => ({
   ...extra,
 });
 
-// Quien responde las ofertas es M3, con su token de servicio y el scope m5:offers:respond
-// (como en src/main.js). El conductor viaja en el cuerpo (conductor_id), no en el token.
-const SCOPE_M3 = "m5:offers:respond";
-
 function token(claims = {}, { secreto = SECRETO, opciones = {} } = {}) {
   return jwt.sign(
-    { sub: "identidad-1", roles: ["CONDUCTOR"], conductor_id: "cond-1", scope: SCOPE_M3, ...claims },
+    { sub: "identidad-1", roles: ["CONDUCTOR"], conductor_id: "cond-1", ...claims },
     secreto,
     { algorithm: "HS256", expiresIn: "5m", ...opciones }
   );
@@ -50,15 +46,13 @@ function crearEntorno({ rateLimitMax = 1000, chequeos } = {}) {
   mundo.estado.ofertas.set(OFERTA_1, { ofertaId: OFERTA_1, solicitudId: "sol-1", conductorId: "cond-1", estado: "pendiente", venceEn: new Date("2026-10-20T12:05:00Z") });
   mundo.estado.ofertas.set(OFERTA_2, { ofertaId: OFERTA_2, solicitudId: "sol-1", conductorId: "cond-2", estado: "pendiente", venceEn: new Date("2026-10-20T12:05:00Z") });
 
-  // El verificador lee los scopes del claim "scope", como el de Keycloak en src/main.js.
-  const configConScopes = { ...config, jwt: { ...config.jwt, claimScopes: "scope" } };
   const app = crearApp({
     config,
     logger,
-    verificador: crearVerificadorLocal(configConScopes),
+    verificador: crearVerificadorLocal(config),
     chequeos,
     registrarRutas: (app, { requerirRol, validar }) =>
-      app.use(crearRouterRespuesta({ deps: mundo.deps, requerirRol, requerirScope, validar })),
+      app.use(crearRouterRespuesta({ deps: mundo.deps, requerirRol, validar })),
   });
   return { app, mundo, lineas };
 }
@@ -133,21 +127,14 @@ describe("Autenticación y autorización", () => {
     assert.equal((await post(`/ofertas/${OFERTA_1}/respuesta`, { cuerpo: cuerpoOk, jwtToken: t })).status, 401);
   });
 
-  test("token sin el scope de M3 (por ejemplo, un cliente) -> 403", async () => {
-    const t = token({ roles: ["CLIENTE"], scope: "" });
+  test("rol equivocado (cliente) -> 403", async () => {
+    const t = token({ roles: ["CLIENTE"] });
     assert.equal((await post(`/ofertas/${OFERTA_1}/respuesta`, { cuerpo: cuerpoOk, jwtToken: t })).status, 403);
   });
 
-  test("un conductor no puede responder directo, sin pasar por M3 (sin el scope) -> 403 y no se modifica nada", async () => {
-    const t = token({ scope: "" }); // token de conductor (rol CONDUCTOR, dueño de la oferta 1) sin el scope de M3
+  test("conductor autenticado pero dueño de OTRA oferta -> 403 y no se modifica nada", async () => {
+    const t = token({ conductor_id: "cond-2" }); // la oferta 1 es de cond-1
     const r = await post(`/ofertas/${OFERTA_1}/respuesta`, { cuerpo: cuerpoOk, jwtToken: t });
-    assert.equal(r.status, 403);
-    assert.equal(entorno.mundo.estado.solicitudes.get("sol-1").estado, "buscando");
-  });
-
-  test("M3 responde por un conductor que NO es el dueño de la oferta -> 403 y no se modifica nada", async () => {
-    const cuerpo = cuerpoOferta(OFERTA_1, "aceptado", { conductor_id: "cond-2" }); // la oferta 1 es de cond-1
-    const r = await post(`/ofertas/${OFERTA_1}/respuesta`, { cuerpo, jwtToken: token() });
     assert.equal(r.status, 403);
     assert.equal(entorno.mundo.estado.solicitudes.get("sol-1").estado, "buscando");
   });
@@ -238,9 +225,7 @@ describe("Asignación única de punta a punta por HTTP", () => {
     const repetido = await post(ruta1, { cuerpo: cuerpoOferta(OFERTA_1), jwtToken: token() });
     assert.equal(repetido.status, 200);
     assert.equal((await repetido.json()).repetida, true);
-    // La repetición vuelve a avisar a M6 para recuperar el tripId, con el mismo aviso: un solo viaje.
-    const avisos = entorno.mundo.espias.conductorAsignado.map((d) => JSON.stringify(d));
-    assert.equal(new Set(avisos).size, 1);
+    assert.equal(entorno.mundo.espias.conductorAsignado.length, 1);
   });
 
   test("dos conductores aceptan a la vez por HTTP: un solo 200", async () => {

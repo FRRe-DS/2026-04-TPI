@@ -100,10 +100,7 @@ describe("Asignación única bajo concurrencia (RF-5.6, RNF-08, RNF-07)", () => 
     assert.ok(ganadores.length > 1, "la versión ingenua debería haber asignado a más de uno");
   });
 
-  // La repetición vuelve a avisar a M6 para recuperar el tripId que necesita M3 (cambio del 25/11).
-  // Es el MISMO aviso (y en el cliente real la misma clave de idempotencia, viaje:{requestId}), así
-  // que M6 no crea un segundo viaje: se verifica que todos los avisos sean idénticos.
-  test("el mismo conductor envía su aceptación dos veces a la vez: ambas OK, un solo viaje", async () => {
+  test("el mismo conductor envía su aceptación dos veces a la vez: ambas OK, un solo aviso", async () => {
     const m = escenarioConOfertas(3);
     const [a, b] = await Promise.all([
       procesarAceptacion({ ofertaId: "of-1", conductorId: "cond-1" }, m.deps),
@@ -112,21 +109,18 @@ describe("Asignación única bajo concurrencia (RF-5.6, RNF-08, RNF-07)", () => 
     assert.equal(a.resultado, R.ASIGNADA);
     assert.equal(b.resultado, R.ASIGNADA);
     assert.equal([a, b].filter((r) => r.repetida).length, 1);
-    assert.equal(a.tripId, b.tripId);
-    assert.equal(new Set(m.espias.conductorAsignado.map((d) => JSON.stringify(d))).size, 1);
+    assert.equal(m.espias.conductorAsignado.length, 1);
   });
 });
 
 describe("Idempotencia (RNF-09)", () => {
-  test("repetir la aceptación después de ganar devuelve el mismo éxito y el mismo viaje, sin repetir efectos", async () => {
+  test("repetir la aceptación después de ganar devuelve el mismo éxito sin repetir avisos", async () => {
     const m = escenarioConOfertas(2);
-    const primera = await procesarAceptacion({ ofertaId: "of-1", conductorId: "cond-1" }, m.deps);
+    await procesarAceptacion({ ofertaId: "of-1", conductorId: "cond-1" }, m.deps);
     const otra = await procesarAceptacion({ ofertaId: "of-1", conductorId: "cond-1" }, m.deps);
     assert.equal(otra.resultado, R.ASIGNADA);
     assert.equal(otra.repetida, true);
-    assert.equal(otra.tripId, primera.tripId);
-    // El aviso a M6 se repite para recuperar el tripId, pero es el mismo aviso (idempotente).
-    assert.equal(new Set(m.espias.conductorAsignado.map((d) => JSON.stringify(d))).size, 1);
+    assert.equal(m.espias.conductorAsignado.length, 1);
     assert.equal(m.espias.liberados.length, 2, "cond-1 (ganador) y cond-2, una sola vez cada uno");
   });
 

@@ -1,0 +1,51 @@
+v20.20.2
+/workspace/scratch/a3c01e98525f/work/runtime/mysql/bin/mysqld  Ver 8.4.9 for Linux on x86_64 (MySQL Community Server - GPL)
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> asientos-service@1.0.0 db:init
+> node scripts/init-db.js
+
+OK  schema.sql
+OK  seed.sql
+Asientos cargados: 288
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> asientos-service@1.0.0 medir:tiempo-real
+> node scripts/medir-tiempo-real.js --clientes 3 --segundos 6 --cambios 2 --intervalo-polling-ms 1000 --csv ../../../../work/smoke-adaptado.csv
+
+{"evento":"configuracion_medicion","node":"v20.20.2","base":"http://127.0.0.1:34343","reloj":"performance.now() poscommit en el proceso de Asientos","clientes":[3],"segundosPorFase":6,"cambiosPorFase":2,"intervaloPollingMs":1000,"funcionId":41,"asientoId":22}
+{"evento":"medicion_inicio","clientes":3,"mecanismo":"WebSocket"}
+{"evento":"medicion_resultado","clientes":3,"mecanismo":"WebSocket","segundos":6,"cambios":2,"observadas":6,"esperadas":6,"medidoPorEndpoint":9,"upgrades":3,"mensajes":9,"pollingEnviado":0,"pollingExitoso":0,"pollingFallido":0,"solicitudesPorMinuto":120,"demoraPromedioMs":2.707,"demoraP95Ms":3.295,"demoraMaximaMs":3.295}
+{"evento":"medicion_inicio","clientes":3,"mecanismo":"Polling"}
+{"evento":"medicion_resultado","clientes":3,"mecanismo":"Polling","segundos":6,"cambios":2,"observadas":6,"esperadas":6,"medidoPorEndpoint":18,"upgrades":0,"mensajes":0,"pollingEnviado":18,"pollingExitoso":18,"pollingFallido":0,"solicitudesPorMinuto":180,"demoraPromedioMs":507.937,"demoraP95Ms":510.61,"demoraMaximaMs":510.61}
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> asientos-service@1.0.0 medir:tiempo-real
+> node scripts/medir-tiempo-real.js --csv ../../docs/evidencias/mediciones-tiempo-real.csv
+
+{"evento":"configuracion_medicion","node":"v20.20.2","base":"http://127.0.0.1:35013","reloj":"performance.now() poscommit en el proceso de Asientos","clientes":[3,10,50],"segundosPorFase":60,"cambiosPorFase":6,"intervaloPollingMs":2000,"funcionId":41,"asientoId":22}
+{"evento":"medicion_inicio","clientes":3,"mecanismo":"WebSocket"}
+{"evento":"medicion_resultado","clientes":3,"mecanismo":"WebSocket","segundos":60,"cambios":6,"observadas":18,"esperadas":18,"medidoPorEndpoint":21,"upgrades":3,"mensajes":21,"pollingEnviado":0,"pollingExitoso":0,"pollingFallido":0,"solicitudesPorMinuto":24,"demoraPromedioMs":2.185,"demoraP95Ms":3.211,"demoraMaximaMs":3.211}
+{"evento":"medicion_inicio","clientes":3,"mecanismo":"Polling"}
+{"evento":"medicion_resultado","clientes":3,"mecanismo":"Polling","segundos":60,"cambios":6,"observadas":18,"esperadas":18,"medidoPorEndpoint":90,"upgrades":0,"mensajes":0,"pollingEnviado":90,"pollingExitoso":90,"pollingFallido":0,"solicitudesPorMinuto":90,"demoraPromedioMs":1174.039,"demoraP95Ms":1937.974,"demoraMaximaMs":1937.974}
+{"evento":"medicion_inicio","clientes":10,"mecanismo":"WebSocket"}
+{"evento":"medicion_resultado","clientes":10,"mecanismo":"WebSocket","segundos":60,"cambios":6,"observadas":60,"esperadas":60,"medidoPorEndpoint":70,"upgrades":10,"mensajes":70,"pollingEnviado":0,"pollingExitoso":0,"pollingFallido":0,"solicitudesPorMinuto":80,"demoraPromedioMs":2.199,"demoraP95Ms":3.223,"demoraMaximaMs":3.259}
+{"evento":"medicion_inicio","clientes":10,"mecanismo":"Polling"}
+{"evento":"medicion_resultado","clientes":10,"mecanismo":"Polling","segundos":60,"cambios":6,"observadas":60,"esperadas":60,"medidoPorEndpoint":300,"upgrades":0,"mensajes":0,"pollingEnviado":300,"pollingExitoso":300,"pollingFallido":0,"solicitudesPorMinuto":300,"demoraPromedioMs":1188.887,"demoraP95Ms":1948.15,"demoraMaximaMs":1949.994}
+{"evento":"medicion_inicio","clientes":50,"mecanismo":"WebSocket"}
+{"evento":"medicion_resultado","clientes":50,"mecanismo":"WebSocket","segundos":60,"cambios":6,"observadas":300,"esperadas":300,"medidoPorEndpoint":350,"upgrades":50,"mensajes":350,"pollingEnviado":0,"pollingExitoso":0,"pollingFallido":0,"solicitudesPorMinuto":400,"demoraPromedioMs":3.222,"demoraP95Ms":5.772,"demoraMaximaMs":6.316}
+{"evento":"medicion_inicio","clientes":50,"mecanismo":"Polling"}
+{"evento":"medicion_resultado","clientes":50,"mecanismo":"Polling","segundos":60,"cambios":6,"observadas":300,"esperadas":300,"medidoPorEndpoint":1500,"upgrades":0,"mensajes":0,"pollingEnviado":1500,"pollingExitoso":1500,"pollingFallido":0,"solicitudesPorMinuto":1500,"demoraPromedioMs":1229.296,"demoraP95Ms":2007.961,"demoraMaximaMs":2011.249}
+
+Verificación breve con el adaptador
+
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> asientos-service@1.0.0 medir:tiempo-real
+> node scripts/medir-tiempo-real.js --clientes 3 --segundos 6 --cambios 2 --intervalo-polling-ms 1000 --csv /workspace/scratch/a3c01e98525f/work/revision-adaptador/medicion-breve.csv
+
+{"evento":"configuracion_medicion","node":"v20.20.2","base":"http://127.0.0.1:46107","reloj":"performance.now() poscommit en el proceso de Asientos","clientes":[3],"segundosPorFase":6,"cambiosPorFase":2,"intervaloPollingMs":1000,"funcionId":41,"asientoId":22}
+{"evento":"medicion_inicio","clientes":3,"mecanismo":"WebSocket"}
+{"evento":"medicion_resultado","clientes":3,"mecanismo":"WebSocket","segundos":6,"cambios":2,"observadas":6,"esperadas":6,"medidoPorEndpoint":9,"upgrades":3,"mensajes":9,"pollingEnviado":0,"pollingExitoso":0,"pollingFallido":0,"solicitudesPorMinuto":120,"demoraPromedioMs":2.556,"demoraP95Ms":2.68,"demoraMaximaMs":2.68}
+{"evento":"medicion_inicio","clientes":3,"mecanismo":"Polling"}
+{"evento":"medicion_resultado","clientes":3,"mecanismo":"Polling","segundos":6,"cambios":2,"observadas":6,"esperadas":6,"medidoPorEndpoint":18,"upgrades":0,"mensajes":0,"pollingEnviado":18,"pollingExitoso":18,"pollingFallido":0,"solicitudesPorMinuto":180,"demoraPromedioMs":504.988,"demoraP95Ms":505.759,"demoraMaximaMs":505.759}

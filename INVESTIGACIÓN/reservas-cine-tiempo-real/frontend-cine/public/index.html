@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="es" data-mode="websocket">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101522">
+  <title>Cine en tiempo real | Selección de asientos</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body hidden>
+  <header class="topbar">
+    <a class="brand" href="index.html" aria-label="Cine en tiempo real, inicio">
+      <span class="brand-mark">C</span>
+      <span>CINE<span class="brand-light">/LIVE</span></span>
+    </a>
+    <div class="topbar-right">
+      <span id="connectionStatus" class="status-pill status-idle"><span class="status-dot"></span><span id="connectionText">Sin conectar</span></span>
+      <span class="mode-label">MODO WEBSOCKET</span>
+      <div class="cuenta">
+        <span id="currentUser" aria-label="Usuario"></span>
+        <button id="logout" class="text-button" type="button">Cerrar sesión</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="page-shell">
+    <section class="intro-row">
+      <div>
+        <p class="eyebrow">RESERVAS EN TIEMPO REAL</p>
+        <h1>Elegí tu lugar.</h1>
+        <p class="intro-copy">Consultá la disponibilidad y reservá tu asiento antes de que alguien más lo elija.</p>
+      </div>
+      <a class="mode-switch" href="polling.html">Ver versión con polling <span aria-hidden="true">→</span></a>
+    </section>
+
+    <section id="application" class="app-layout">
+      <aside class="sidebar">
+        <section class="panel function-panel">
+          <div class="panel-heading compact">
+            <div>
+              <p class="eyebrow">PASO 1</p>
+              <h2>Función</h2>
+            </div>
+            <span class="step-number">01</span>
+          </div>
+          <label class="field-label" for="functionSelect">Elegí película y horario</label>
+          <select id="functionSelect" class="select-control">
+            <option value="">Cargando funciones...</option>
+          </select>
+          <button id="reloadFunctions" class="button button-secondary button-wide" type="button">Actualizar funciones</button>
+          <div id="functionInfo" class="function-info muted">Seleccioná una función para ver la sala.</div>
+        </section>
+
+        <section class="panel legend-panel">
+          <p class="eyebrow">REFERENCIAS</p>
+          <h2>Disponibilidad</h2>
+          <div class="legend-item"><span class="seat-key seat-free"></span><span>Libre</span><small>Podés elegirlo</small></div>
+          <div class="legend-item"><span class="seat-key seat-locked"></span><span>Bloqueado</span><small>En selección</small></div>
+          <div class="legend-item"><span class="seat-key seat-sold"></span><span>Vendido</span><small>No disponible</small></div>
+        </section>
+
+        <section id="ownLockPanel" class="panel own-lock-panel hidden">
+          <p class="eyebrow">TU RESERVA TEMPORAL</p>
+          <h2 id="ownLockSeat">Asiento seleccionado</h2>
+          <div id="countdown" class="countdown">--:--</div>
+          <p id="countdownHelp" class="muted small">Tiempo restante para confirmar la compra.</p>
+          <div class="lock-actions">
+            <button id="confirmButton" class="button button-primary button-wide" type="button">Confirmar compra</button>
+            <button id="releaseButton" class="button button-secondary button-wide" type="button">Liberar asiento</button>
+          </div>
+        </section>
+      </aside>
+
+      <section class="main-column">
+        <section class="panel auditorium-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">PASO 2</p>
+              <h2>Seleccioná tus asientos</h2>
+            </div>
+            <span id="seatCount" class="seat-count">Sin función</span>
+          </div>
+          <div class="screen-wrap"><div class="screen">PANTALLA</div></div>
+          <div id="seatGrid" class="seat-grid empty-grid">
+            <div class="empty-state">Primero seleccioná una función para cargar la grilla.</div>
+          </div>
+          <div id="feedback" class="feedback" role="status" aria-live="polite"></div>
+        </section>
+
+        <section class="panel metrics-panel">
+          <div class="panel-heading compact">
+            <div>
+              <p class="eyebrow">OBSERVABILIDAD</p>
+              <h2>Métricas del servidor</h2>
+            </div>
+            <button id="refreshMetrics" class="button button-secondary" type="button">Actualizar</button>
+          </div>
+          <div class="metrics-grid">
+            <article class="metric-card"><span>Conexiones activas</span><strong id="activeConnections">—</strong></article>
+            <article class="metric-card"><span>Mensajes emitidos</span><strong id="messagesEmitted">—</strong></article>
+            <article class="metric-card"><span>Solicitudes polling</span><strong id="pollingRequests">—</strong><small>Últimos 60 segundos</small></article>
+          </div>
+          <p id="metricsNote" class="tiny-note">Las métricas se consultan mediante los endpoints de /api/metricas.</p>
+        </section>
+      </section>
+    </section>
+
+    <footer class="footer">
+      <span>Proyecto académico · API Gateway + WebSockets</span>
+    </footer>
+  </main>
+
+  <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+</body>
+</html>

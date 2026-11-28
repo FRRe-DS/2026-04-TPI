@@ -1,0 +1,800 @@
+Revisión del adaptador
+
+v20.20.2
+/workspace/scratch/a3c01e98525f/work/runtime/mysql/bin/mysqld  Ver 8.4.9 for Linux on x86_64 (MySQL Community Server - GPL)
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> asientos-service@1.0.0 db:init
+> node scripts/init-db.js
+
+OK  schema.sql
+OK  seed.sql
+Asientos cargados: 288
+npm test, corrida 1: exit 1
+72:not ok 13 - 10 bloqueos simultáneos: gana exactamente uno
+126:# pass 17
+127:# fail 1
+npm test, corrida 2: exit 1
+77:not ok 14 - un bloqueo vencido se ve como libre y se puede volver a bloquear
+99:not ok 15 - liberar: solo el dueño del bloqueo puede
+144:# pass 16
+145:# fail 2
+npm test, corrida 3: exit 0
+
+npm test, corrida 1
+
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> asientos-service@1.0.0 test
+> node --test
+
+TAP version 13
+# Prueba de condición de carrera - 2026-11-12T01:49:39.229Z
+# Asiento F5 de la función 42 (id 104), 10 usuarios a la vez
+# Ingenua (leer y después escribir): 10 éxitos de 10 intentos simultáneos   <- MAL: varios creen que lo ganaron
+# Condicionada (un solo UPDATE)   : 1 éxitos de 10 intentos simultáneos   <- BIEN: gana exactamente uno
+# Subtest: /workspace/scratch/a3c01e98525f/work/pruebas-con-adaptador/services/asientos/scripts/test-carrera.js
+ok 1 - /workspace/scratch/a3c01e98525f/work/pruebas-con-adaptador/services/asientos/scripts/test-carrera.js
+  ---
+  duration_ms: 304.294269
+  ...
+# Subtest: sin token devuelve 401
+ok 2 - sin token devuelve 401
+  ---
+  duration_ms: 55.576105
+  ...
+# Subtest: GET /api/asientos devuelve la grilla completa
+ok 3 - GET /api/asientos devuelve la grilla completa
+  ---
+  duration_ms: 16.088849
+  ...
+# Subtest: GET /api/asientos valida parámetros y existencia
+ok 4 - GET /api/asientos valida parámetros y existencia
+  ---
+  duration_ms: 7.292096
+  ...
+# Subtest: bloquear: 200 al primero, 409 al segundo, y publica un evento
+ok 5 - bloquear: 200 al primero, 409 al segundo, y publica un evento
+  ---
+  duration_ms: 8.919769
+  ...
+# Subtest: bloquear un asiento inexistente da 404
+ok 6 - bloquear un asiento inexistente da 404
+  ---
+  duration_ms: 4.08208
+  ...
+# Subtest: liberar: 403 si es ajeno, 204 si es propio
+ok 7 - liberar: 403 si es ajeno, 204 si es propio
+  ---
+  duration_ms: 14.307475
+  ...
+# Subtest: confirmar: 200 al dueño, y después el asiento queda vendido
+ok 8 - confirmar: 200 al dueño, y después el asiento queda vendido
+  ---
+  duration_ms: 16.900176
+  ...
+# Subtest: confirmar con el bloqueo vencido da 409
+ok 9 - confirmar con el bloqueo vencido da 409
+  ---
+  duration_ms: 9.051956
+  ...
+# Subtest: health responde sin token
+ok 10 - health responde sin token
+  ---
+  duration_ms: 2.764698
+  ...
+# Subtest: bloquear un asiento libre funciona
+ok 11 - bloquear un asiento libre funciona
+  ---
+  duration_ms: 25.861797
+  ...
+# Subtest: un asiento ya bloqueado no se puede bloquear de nuevo
+ok 12 - un asiento ya bloqueado no se puede bloquear de nuevo
+  ---
+  duration_ms: 2.525363
+  ...
+# Subtest: 10 bloqueos simultáneos: gana exactamente uno
+not ok 13 - 10 bloqueos simultáneos: gana exactamente uno
+  ---
+  duration_ms: 22.120133
+  location: '/workspace/scratch/a3c01e98525f/work/pruebas-con-adaptador/services/asientos/tests/bloqueo.test.js:38:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    2 !== 1
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 2
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/workspace/scratch/a3c01e98525f/work/pruebas-con-adaptador/services/asientos/tests/bloqueo.test.js:42:10)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.run (node:internal/test_runner/test:797:9)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: un bloqueo vencido se ve como libre y se puede volver a bloquear
+ok 14 - un bloqueo vencido se ve como libre y se puede volver a bloquear
+  ---
+  duration_ms: 4.206123
+  ...
+# Subtest: liberar: solo el dueño del bloqueo puede
+ok 15 - liberar: solo el dueño del bloqueo puede
+  ---
+  duration_ms: 2.657178
+  ...
+# Subtest: confirmar: el dueño con bloqueo vigente compra el asiento
+ok 16 - confirmar: el dueño con bloqueo vigente compra el asiento
+  ---
+  duration_ms: 2.300971
+  ...
+# Subtest: confirmar falla si el bloqueo es ajeno o está vencido
+ok 17 - confirmar falla si el bloqueo es ajeno o está vencido
+  ---
+  duration_ms: 5.716268
+  ...
+# Subtest: liberarVencidos libera los bloqueos vencidos y los informa
+ok 18 - liberarVencidos libera los bloqueos vencidos y los informa
+  ---
+  duration_ms: 4.00086
+  ...
+# Subtest: suite de tiempo real (npm run test:tiempo-real)
+ok 19 - suite de tiempo real (npm run test:tiempo-real) # SKIP
+  ---
+  duration_ms: 1.064037
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 17
+# fail 1
+# cancelled 0
+# skipped 1
+# todo 0
+# duration_ms 421.268307
+
+npm test, corrida 2
+
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> asientos-service@1.0.0 test
+> node --test
+
+TAP version 13
+# Prueba de condición de carrera - 2026-11-12T01:49:40.037Z
+# Asiento F5 de la función 42 (id 104), 10 usuarios a la vez
+# Ingenua (leer y después escribir): 10 éxitos de 10 intentos simultáneos   <- MAL: varios creen que lo ganaron
+# Condicionada (un solo UPDATE)   : 1 éxitos de 10 intentos simultáneos   <- BIEN: gana exactamente uno
+# Subtest: /workspace/scratch/a3c01e98525f/work/pruebas-con-adaptador/services/asientos/scripts/test-carrera.js
+ok 1 - /workspace/scratch/a3c01e98525f/work/pruebas-con-adaptador/services/asientos/scripts/test-carrera.js
+  ---
+  duration_ms: 234.430103
+  ...
+# Subtest: sin token devuelve 401
+ok 2 - sin token devuelve 401
+  ---
+  duration_ms: 56.366336
+  ...
+# Subtest: GET /api/asientos devuelve la grilla completa
+ok 3 - GET /api/asientos devuelve la grilla completa
+  ---
+  duration_ms: 10.209511
+  ...
+# Subtest: GET /api/asientos valida parámetros y existencia
+ok 4 - GET /api/asientos valida parámetros y existencia
+  ---
+  duration_ms: 7.523079
+  ...
+# Subtest: bloquear: 200 al primero, 409 al segundo, y publica un evento
+ok 5 - bloquear: 200 al primero, 409 al segundo, y publica un evento
+  ---
+  duration_ms: 10.271822
+  ...
+# Subtest: bloquear un asiento inexistente da 404
+ok 6 - bloquear un asiento inexistente da 404
+  ---
+  duration_ms: 5.164675
+  ...
+# Subtest: liberar: 403 si es ajeno, 204 si es propio
+ok 7 - liberar: 403 si es ajeno, 204 si es propio
+  ---
+  duration_ms: 15.960154
+  ...
+# Subtest: confirmar: 200 al dueño, y después el asiento queda vendido
+ok 8 - confirmar: 200 al dueño, y después el asiento queda vendido
+  ---
+  duration_ms: 19.054428
+  ...
+# Subtest: confirmar con el bloqueo vencido da 409
+ok 9 - confirmar con el bloqueo vencido da 409
+  ---
+  duration_ms: 7.959426
+  ...
+# Subtest: health responde sin token
+ok 10 - health responde sin token
+  ---
+  duration_ms: 3.369675
+  ...
+# Subtest: bloquear un asiento libre funciona
+ok 11 - bloquear un asiento libre funciona
+  ---
+  duration_ms: 25.534222
+  ...
+# Subtest: un asiento ya bloqueado no se puede bloquear de nuevo
+ok 12 - un asiento ya bloqueado no se puede bloquear de nuevo
+  ---
+  duration_ms: 2.79338
+  ...
+# Subtest: 10 bloqueos simultáneos: gana exactamente uno
+ok 13 - 10 bloqueos simultáneos: gana exactamente uno
+  ---
+  duration_ms: 67.54224
+  ...
+# Subtest: un bloqueo vencido se ve como libre y se puede volver a bloquear
+not ok 14 - un bloqueo vencido se ve como libre y se puede volver a bloquear
+  ---
+  duration_ms: 6.640091
+  location: '/workspace/scratch/a3c01e98525f/work/pruebas-con-adaptador/services/asientos/tests/bloqueo.test.js:45:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    false !== true
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/workspace/scratch/a3c01e98525f/work/pruebas-con-adaptador/services/asientos/tests/bloqueo.test.js:51:10)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.run (node:internal/test_runner/test:797:9)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: liberar: solo el dueño del bloqueo puede
+not ok 15 - liberar: solo el dueño del bloqueo puede
+  ---
+  duration_ms: 4.476624
+  location: '/workspace/scratch/a3c01e98525f/work/pruebas-con-adaptador/services/asientos/tests/bloqueo.test.js:55:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'bloqueado'
+    - 'libre'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'libre'
+  actual: 'bloqueado'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/workspace/scratch/a3c01e98525f/work/pruebas-con-adaptador/services/asientos/tests/bloqueo.test.js:59:10)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.run (node:internal/test_runner/test:797:9)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: confirmar: el dueño con bloqueo vigente compra el asiento
+ok 16 - confirmar: el dueño con bloqueo vigente compra el asiento
+  ---
+  duration_ms: 4.223239
+  ...
+# Subtest: confirmar falla si el bloqueo es ajeno o está vencido
+ok 17 - confirmar falla si el bloqueo es ajeno o está vencido
+  ---
+  duration_ms: 5.073289
+  ...
+# Subtest: liberarVencidos libera los bloqueos vencidos y los informa
+ok 18 - liberarVencidos libera los bloqueos vencidos y los informa
+  ---
+  duration_ms: 4.170921
+  ...
+# Subtest: suite de tiempo real (npm run test:tiempo-real)
+ok 19 - suite de tiempo real (npm run test:tiempo-real) # SKIP
+  ---
+  duration_ms: 0.987053
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 16
+# fail 2
+# cancelled 0
+# skipped 1
+# todo 0
+# duration_ms 408.365139
+
+npm test, corrida 3
+
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> asientos-service@1.0.0 test
+> node --test
+
+TAP version 13
+# Prueba de condición de carrera - 2026-11-12T01:49:40.864Z
+# Asiento F5 de la función 42 (id 104), 10 usuarios a la vez
+# Ingenua (leer y después escribir): 1 éxitos de 10 intentos simultáneos   <- MAL: varios creen que lo ganaron
+# Condicionada (un solo UPDATE)   : 1 éxitos de 10 intentos simultáneos   <- BIEN: gana exactamente uno
+# Subtest: /workspace/scratch/a3c01e98525f/work/pruebas-con-adaptador/services/asientos/scripts/test-carrera.js
+ok 1 - /workspace/scratch/a3c01e98525f/work/pruebas-con-adaptador/services/asientos/scripts/test-carrera.js
+  ---
+  duration_ms: 272.280252
+  ...
+# Subtest: sin token devuelve 401
+ok 2 - sin token devuelve 401
+  ---
+  duration_ms: 49.221647
+  ...
+# Subtest: GET /api/asientos devuelve la grilla completa
+ok 3 - GET /api/asientos devuelve la grilla completa
+  ---
+  duration_ms: 11.773709
+  ...
+# Subtest: GET /api/asientos valida parámetros y existencia
+ok 4 - GET /api/asientos valida parámetros y existencia
+  ---
+  duration_ms: 7.620059
+  ...
+# Subtest: bloquear: 200 al primero, 409 al segundo, y publica un evento
+ok 5 - bloquear: 200 al primero, 409 al segundo, y publica un evento
+  ---
+  duration_ms: 9.66307
+  ...
+# Subtest: bloquear un asiento inexistente da 404
+ok 6 - bloquear un asiento inexistente da 404
+  ---
+  duration_ms: 5.537126
+  ...
+# Subtest: liberar: 403 si es ajeno, 204 si es propio
+ok 7 - liberar: 403 si es ajeno, 204 si es propio
+  ---
+  duration_ms: 15.782987
+  ...
+# Subtest: confirmar: 200 al dueño, y después el asiento queda vendido
+ok 8 - confirmar: 200 al dueño, y después el asiento queda vendido
+  ---
+  duration_ms: 17.857775
+  ...
+# Subtest: confirmar con el bloqueo vencido da 409
+ok 9 - confirmar con el bloqueo vencido da 409
+  ---
+  duration_ms: 9.088269
+  ...
+# Subtest: health responde sin token
+ok 10 - health responde sin token
+  ---
+  duration_ms: 3.091492
+  ...
+# Subtest: bloquear un asiento libre funciona
+ok 11 - bloquear un asiento libre funciona
+  ---
+  duration_ms: 17.92892
+  ...
+# Subtest: un asiento ya bloqueado no se puede bloquear de nuevo
+ok 12 - un asiento ya bloqueado no se puede bloquear de nuevo
+  ---
+  duration_ms: 4.276608
+  ...
+# Subtest: 10 bloqueos simultáneos: gana exactamente uno
+ok 13 - 10 bloqueos simultáneos: gana exactamente uno
+  ---
+  duration_ms: 23.262802
+  ...
+# Subtest: un bloqueo vencido se ve como libre y se puede volver a bloquear
+ok 14 - un bloqueo vencido se ve como libre y se puede volver a bloquear
+  ---
+  duration_ms: 4.120206
+  ...
+# Subtest: liberar: solo el dueño del bloqueo puede
+ok 15 - liberar: solo el dueño del bloqueo puede
+  ---
+  duration_ms: 2.564801
+  ...
+# Subtest: confirmar: el dueño con bloqueo vigente compra el asiento
+ok 16 - confirmar: el dueño con bloqueo vigente compra el asiento
+  ---
+  duration_ms: 2.421789
+  ...
+# Subtest: confirmar falla si el bloqueo es ajeno o está vencido
+ok 17 - confirmar falla si el bloqueo es ajeno o está vencido
+  ---
+  duration_ms: 6.885886
+  ...
+# Subtest: liberarVencidos libera los bloqueos vencidos y los informa
+ok 18 - liberarVencidos libera los bloqueos vencidos y los informa
+  ---
+  duration_ms: 4.354303
+  ...
+# Subtest: suite de tiempo real (npm run test:tiempo-real)
+ok 19 - suite de tiempo real (npm run test:tiempo-real) # SKIP
+  ---
+  duration_ms: 1.20756
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 18
+# fail 0
+# cancelled 0
+# skipped 1
+# todo 0
+# duration_ms 329.796093
+
+$ node --test tests/api.test.js tests/bloqueo.test.js
+TAP version 13
+# Subtest: sin token devuelve 401
+ok 1 - sin token devuelve 401
+  ---
+  duration_ms: 46.863533
+  ...
+# Subtest: GET /api/asientos devuelve la grilla completa
+ok 2 - GET /api/asientos devuelve la grilla completa
+  ---
+  duration_ms: 9.970206
+  ...
+# Subtest: GET /api/asientos valida parámetros y existencia
+ok 3 - GET /api/asientos valida parámetros y existencia
+  ---
+  duration_ms: 7.572272
+  ...
+# Subtest: bloquear: 200 al primero, 409 al segundo, y publica un evento
+ok 4 - bloquear: 200 al primero, 409 al segundo, y publica un evento
+  ---
+  duration_ms: 11.078728
+  ...
+# Subtest: bloquear un asiento inexistente da 404
+ok 5 - bloquear un asiento inexistente da 404
+  ---
+  duration_ms: 5.926573
+  ...
+# Subtest: liberar: 403 si es ajeno, 204 si es propio
+ok 6 - liberar: 403 si es ajeno, 204 si es propio
+  ---
+  duration_ms: 12.979046
+  ...
+# Subtest: confirmar: 200 al dueño, y después el asiento queda vendido
+ok 7 - confirmar: 200 al dueño, y después el asiento queda vendido
+  ---
+  duration_ms: 17.535747
+  ...
+# Subtest: confirmar con el bloqueo vencido da 409
+ok 8 - confirmar con el bloqueo vencido da 409
+  ---
+  duration_ms: 7.202244
+  ...
+# Subtest: health responde sin token
+ok 9 - health responde sin token
+  ---
+  duration_ms: 2.992175
+  ...
+# Subtest: bloquear un asiento libre funciona
+ok 10 - bloquear un asiento libre funciona
+  ---
+  duration_ms: 19.220255
+  ...
+# Subtest: un asiento ya bloqueado no se puede bloquear de nuevo
+ok 11 - un asiento ya bloqueado no se puede bloquear de nuevo
+  ---
+  duration_ms: 2.551602
+  ...
+# Subtest: 10 bloqueos simultáneos: gana exactamente uno
+ok 12 - 10 bloqueos simultáneos: gana exactamente uno
+  ---
+  duration_ms: 19.303968
+  ...
+# Subtest: un bloqueo vencido se ve como libre y se puede volver a bloquear
+ok 13 - un bloqueo vencido se ve como libre y se puede volver a bloquear
+  ---
+  duration_ms: 4.245752
+  ...
+# Subtest: liberar: solo el dueño del bloqueo puede
+ok 14 - liberar: solo el dueño del bloqueo puede
+  ---
+  duration_ms: 3.021548
+  ...
+# Subtest: confirmar: el dueño con bloqueo vigente compra el asiento
+ok 15 - confirmar: el dueño con bloqueo vigente compra el asiento
+  ---
+  duration_ms: 3.114246
+  ...
+# Subtest: confirmar falla si el bloqueo es ajeno o está vencido
+ok 16 - confirmar falla si el bloqueo es ajeno o está vencido
+  ---
+  duration_ms: 2.620724
+  ...
+# Subtest: liberarVencidos libera los bloqueos vencidos y los informa
+ok 17 - liberarVencidos libera los bloqueos vencidos y los informa
+  ---
+  duration_ms: 4.127747
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 326.400155
+
+Referencia de la revisión anterior
+
+RAR intacto, reejecuciones del comando original
+
+v20.20.2
+/workspace/scratch/a3c01e98525f/work/runtime/mysql/bin/mysqld  Ver 8.4.9 for Linux on x86_64 (MySQL Community Server - GPL)
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> asientos-service@1.0.0 db:init
+> node scripts/init-db.js
+
+OK  schema.sql
+OK  seed.sql
+Asientos cargados: 288
+RAR intento 1: npm test exit 0
+RAR intento 2: npm test exit 0
+RAR intento 3: npm test exit 0
+RAR intento 4: npm test exit 0
+RAR intento 5: npm test exit 0
+RAR intento 6: npm test exit 0
+RAR intento 7: npm test exit 0
+RAR intento 8: npm test exit 0
+RAR intento 9: npm test exit 1
+72:not ok 13 - 10 bloqueos simultáneos: gana exactamente uno
+121:# pass 17
+122:# fail 1
+
+RAR intacto, corrida inicial de npm test
+
+v20.20.2
+/workspace/scratch/a3c01e98525f/work/runtime/mysql/bin/mysqld  Ver 8.4.9 for Linux on x86_64 (MySQL Community Server - GPL)
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> asientos-service@1.0.0 db:init
+> node scripts/init-db.js
+
+OK  schema.sql
+OK  seed.sql
+Asientos cargados: 288
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> asientos-service@1.0.0 test
+> node --test
+
+TAP version 13
+# Prueba de condición de carrera - 2026-11-12T01:24:06.729Z
+# Asiento F5 de la función 42 (id 104), 10 usuarios a la vez
+# Ingenua (leer y después escribir): 1 éxitos de 10 intentos simultáneos   <- MAL: varios creen que lo ganaron
+# Condicionada (un solo UPDATE)   : 1 éxitos de 10 intentos simultáneos   <- BIEN: gana exactamente uno
+# Subtest: /workspace/scratch/a3c01e98525f/work/pruebas-rar-adaptado/services/asientos/scripts/test-carrera.js
+ok 1 - /workspace/scratch/a3c01e98525f/work/pruebas-rar-adaptado/services/asientos/scripts/test-carrera.js
+  ---
+  duration_ms: 300.643422
+  ...
+# Subtest: sin token devuelve 401
+ok 2 - sin token devuelve 401
+  ---
+  duration_ms: 88.836174
+  ...
+# Subtest: GET /api/asientos devuelve la grilla completa
+ok 3 - GET /api/asientos devuelve la grilla completa
+  ---
+  duration_ms: 9.27703
+  ...
+# Subtest: GET /api/asientos valida parámetros y existencia
+ok 4 - GET /api/asientos valida parámetros y existencia
+  ---
+  duration_ms: 6.414657
+  ...
+# Subtest: bloquear: 200 al primero, 409 al segundo, y publica un evento
+ok 5 - bloquear: 200 al primero, 409 al segundo, y publica un evento
+  ---
+  duration_ms: 11.857325
+  ...
+# Subtest: bloquear un asiento inexistente da 404
+ok 6 - bloquear un asiento inexistente da 404
+  ---
+  duration_ms: 5.411951
+  ...
+# Subtest: liberar: 403 si es ajeno, 204 si es propio
+ok 7 - liberar: 403 si es ajeno, 204 si es propio
+  ---
+  duration_ms: 18.079255
+  ...
+# Subtest: confirmar: 200 al dueño, y después el asiento queda vendido
+ok 8 - confirmar: 200 al dueño, y después el asiento queda vendido
+  ---
+  duration_ms: 22.896536
+  ...
+# Subtest: confirmar con el bloqueo vencido da 409
+ok 9 - confirmar con el bloqueo vencido da 409
+  ---
+  duration_ms: 7.82661
+  ...
+# Subtest: health responde sin token
+ok 10 - health responde sin token
+  ---
+  duration_ms: 3.445987
+  ...
+# Subtest: bloquear un asiento libre funciona
+ok 11 - bloquear un asiento libre funciona
+  ---
+  duration_ms: 27.038443
+  ...
+# Subtest: un asiento ya bloqueado no se puede bloquear de nuevo
+ok 12 - un asiento ya bloqueado no se puede bloquear de nuevo
+  ---
+  duration_ms: 2.20013
+  ...
+# Subtest: 10 bloqueos simultáneos: gana exactamente uno
+ok 13 - 10 bloqueos simultáneos: gana exactamente uno
+  ---
+  duration_ms: 26.837155
+  ...
+# Subtest: un bloqueo vencido se ve como libre y se puede volver a bloquear
+ok 14 - un bloqueo vencido se ve como libre y se puede volver a bloquear
+  ---
+  duration_ms: 4.273905
+  ...
+# Subtest: liberar: solo el dueño del bloqueo puede
+ok 15 - liberar: solo el dueño del bloqueo puede
+  ---
+  duration_ms: 2.495379
+  ...
+# Subtest: confirmar: el dueño con bloqueo vigente compra el asiento
+ok 16 - confirmar: el dueño con bloqueo vigente compra el asiento
+  ---
+  duration_ms: 6.579762
+  ...
+# Subtest: confirmar falla si el bloqueo es ajeno o está vencido
+ok 17 - confirmar falla si el bloqueo es ajeno o está vencido
+  ---
+  duration_ms: 9.038436
+  ...
+# Subtest: liberarVencidos libera los bloqueos vencidos y los informa
+ok 18 - liberarVencidos libera los bloqueos vencidos y los informa
+  ---
+  duration_ms: 4.427091
+  ...
+1..18
+# tests 18
+# suites 0
+# pass 18
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 469.637485
+
+RAR intacto, npm test con falla reproducida
+
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> asientos-service@1.0.0 test
+> node --test
+
+TAP version 13
+# Prueba de condición de carrera - 2026-11-12T01:37:43.554Z
+# Asiento F5 de la función 42 (id 104), 10 usuarios a la vez
+# Ingenua (leer y después escribir): 1 éxitos de 10 intentos simultáneos   <- MAL: varios creen que lo ganaron
+# Condicionada (un solo UPDATE)   : 1 éxitos de 10 intentos simultáneos   <- BIEN: gana exactamente uno
+# Subtest: /workspace/scratch/a3c01e98525f/work/pruebas-rar-adaptado/services/asientos/scripts/test-carrera.js
+ok 1 - /workspace/scratch/a3c01e98525f/work/pruebas-rar-adaptado/services/asientos/scripts/test-carrera.js
+  ---
+  duration_ms: 284.948855
+  ...
+# Subtest: sin token devuelve 401
+ok 2 - sin token devuelve 401
+  ---
+  duration_ms: 65.286351
+  ...
+# Subtest: GET /api/asientos devuelve la grilla completa
+ok 3 - GET /api/asientos devuelve la grilla completa
+  ---
+  duration_ms: 14.942635
+  ...
+# Subtest: GET /api/asientos valida parámetros y existencia
+ok 4 - GET /api/asientos valida parámetros y existencia
+  ---
+  duration_ms: 7.420106
+  ...
+# Subtest: bloquear: 200 al primero, 409 al segundo, y publica un evento
+ok 5 - bloquear: 200 al primero, 409 al segundo, y publica un evento
+  ---
+  duration_ms: 8.753331
+  ...
+# Subtest: bloquear un asiento inexistente da 404
+ok 6 - bloquear un asiento inexistente da 404
+  ---
+  duration_ms: 3.830086
+  ...
+# Subtest: liberar: 403 si es ajeno, 204 si es propio
+ok 7 - liberar: 403 si es ajeno, 204 si es propio
+  ---
+  duration_ms: 13.411065
+  ...
+# Subtest: confirmar: 200 al dueño, y después el asiento queda vendido
+ok 8 - confirmar: 200 al dueño, y después el asiento queda vendido
+  ---
+  duration_ms: 14.945267
+  ...
+# Subtest: confirmar con el bloqueo vencido da 409
+ok 9 - confirmar con el bloqueo vencido da 409
+  ---
+  duration_ms: 6.444961
+  ...
+# Subtest: health responde sin token
+ok 10 - health responde sin token
+  ---
+  duration_ms: 2.500616
+  ...
+# Subtest: bloquear un asiento libre funciona
+ok 11 - bloquear un asiento libre funciona
+  ---
+  duration_ms: 20.536444
+  ...
+# Subtest: un asiento ya bloqueado no se puede bloquear de nuevo
+ok 12 - un asiento ya bloqueado no se puede bloquear de nuevo
+  ---
+  duration_ms: 2.389271
+  ...
+# Subtest: 10 bloqueos simultáneos: gana exactamente uno
+not ok 13 - 10 bloqueos simultáneos: gana exactamente uno
+  ---
+  duration_ms: 18.006253
+  location: '/workspace/scratch/a3c01e98525f/work/pruebas-rar-adaptado/services/asientos/tests/bloqueo.test.js:38:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    2 !== 1
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 2
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/workspace/scratch/a3c01e98525f/work/pruebas-rar-adaptado/services/asientos/tests/bloqueo.test.js:42:10)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async Test.run (node:internal/test_runner/test:797:9)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+# Subtest: un bloqueo vencido se ve como libre y se puede volver a bloquear
+ok 14 - un bloqueo vencido se ve como libre y se puede volver a bloquear
+  ---
+  duration_ms: 10.946192
+  ...
+# Subtest: liberar: solo el dueño del bloqueo puede
+ok 15 - liberar: solo el dueño del bloqueo puede
+  ---
+  duration_ms: 2.440276
+  ...
+# Subtest: confirmar: el dueño con bloqueo vigente compra el asiento
+ok 16 - confirmar: el dueño con bloqueo vigente compra el asiento
+  ---
+  duration_ms: 3.169066
+  ...
+# Subtest: confirmar falla si el bloqueo es ajeno o está vencido
+ok 17 - confirmar falla si el bloqueo es ajeno o está vencido
+  ---
+  duration_ms: 2.605821
+  ...
+# Subtest: liberarVencidos libera los bloqueos vencidos y los informa
+ok 18 - liberarVencidos libera los bloqueos vencidos y los informa
+  ---
+  duration_ms: 3.979878
+  ...
+1..18
+# tests 18
+# suites 0
+# pass 17
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 373.508495

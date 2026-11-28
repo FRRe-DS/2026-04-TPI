@@ -66,11 +66,12 @@ export function obtenerSolicitud(solicitudId, token, esperados) {
   return http.get(`${BASE_URL}/solicitudes/${solicitudId}`, params('GET /solicitudes/{id}', esperados, bearer(token)));
 }
 
-// Requiere un token de servicio u operador (en el E2E, el de M3).
+// Requiere un token de servicio u operador (en el E2E, el de M3). Desde el 27/11 la consulta
+// está en /api/v1 (src/respuesta/rutasConsulta.js).
 export function listarOfertas(solicitudId, token, esperados) {
   return http.get(
-    `${BASE_URL}/solicitudes/${solicitudId}/ofertas`,
-    params('GET /solicitudes/{id}/ofertas', esperados, bearer(token)),
+    `${BASE_URL}/api/v1/solicitudes/${solicitudId}/ofertas`,
+    params('GET /api/v1/solicitudes/{id}/ofertas', esperados, bearer(token)),
   );
 }
 

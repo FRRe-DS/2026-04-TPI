@@ -1,0 +1,10 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> asientos-service@1.0.0 test:carrera
+> node scripts/test-carrera.js
+
+Prueba de condición de carrera - 2026-11-12T01:49:47.341Z
+Asiento F5 de la función 42 (id 104), 10 usuarios a la vez
+
+Ingenua (leer y después escribir): 10 éxitos de 10 intentos simultáneos   <- MAL: varios creen que lo ganaron
+Condicionada (un solo UPDATE)   : 1 éxitos de 10 intentos simultáneos   <- BIEN: gana exactamente uno

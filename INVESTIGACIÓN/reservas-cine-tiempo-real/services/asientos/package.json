@@ -1,0 +1,25 @@
+{
+  "name": "asientos-service",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Servicio de Asientos: REST, bloqueo condicionado y vencimiento de bloqueos",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "db:init": "node scripts/init-db.js",
+    "token": "node scripts/generar-token.js",
+    "test": "node --test",
+    "start:tiempo-real": "node src/tiempo-real/servidor-integrado.js",
+    "test:tiempo-real": "node --test tests/tiempo-real.test.js",
+    "medir:tiempo-real": "node scripts/medir-tiempo-real.js",
+    "test:carrera": "node scripts/test-carrera.js"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.10",
+    "express": "^5.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "mysql2": "^3.24.6",
+    "ws": "^8.22.2"
+  }
+}

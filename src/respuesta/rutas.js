@@ -11,6 +11,7 @@ const express = require("express");
 const { ROLES, errores, asociarSolicitud } = require("../comun");
 const {
   procesarAceptacion,
+  verificarConductorDeOferta,
   esquemaParamsOferta,
   esquemaParamsOfertaM3,
   esquemaDecisionM3,
@@ -21,7 +22,7 @@ const { estadoHttpRespuesta, cuerpoHttpRespuesta } = require("./resultadosRespue
 
 // `resolverConductorId` es opcional: cómo pasar de la identidad del token al conductorId de la
 // oferta (por defecto, el claim configurado en JWT_CLAIM_CONDUCTOR).
-function crearRouterRespuesta({ deps, requerirRol, requerirScope, validar }) {
+function crearRouterRespuesta({ deps, requerirRol, requerirScope, validar, resolverConductorId }) {
   const router = express.Router();
   const autorizarM3 = typeof requerirScope === "function"
     ? requerirScope("m5:offers:respond")
@@ -83,8 +84,18 @@ function crearRouterRespuesta({ deps, requerirRol, requerirScope, validar }) {
         const oferta = await deps.ofertas.obtenerPorId(ofertaId);
         if (!oferta) throw errores.noEncontrado("La oferta no existe");
 
-        const conductorId = cuerpo.conductor_id;
-        asociarSolicitud(req, oferta.solicitudId); // los logs de este pedido llevan el solicitudId
+        //const conductorId = cuerpo.conductor_id;
+        //asociarSolicitud(req, oferta.solicitudId); // los logs de este pedido llevan el solicitudId
+        const conductorId = await verificarConductorDeOferta({
+          identidad: req.identidad,
+          oferta,
+          resolverConductorId,
+        });
+        asociarSolicitud(req, oferta.solicitudId);
+
+if (cuerpo.conductor_id !== conductorId) {
+  throw errores.prohibido("La oferta no corresponde a este conductor");
+}
 
         if (cuerpo.conductor_id !== oferta.conductorId) {
           throw errores.prohibido("La oferta no corresponde a este conductor");

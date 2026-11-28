@@ -43,8 +43,8 @@ Se ejecuta al **abrir o actualizar un PR hacia `main`**, en cada **push a `main`
 Los resultados quedan en la pestaña *Actions*: el resumen de cada job y los artefactos (JUnit,
 reportes k6, SARIF). Las alertas de CodeQL también aparecen en *Security → Code scanning*.
 
-Los tests unitarios se corren igual en local con `npm test` (los tests estilo Jest de
-`src/busqueda/*.test.js` quedan fuera, como hasta ahora).
+El job `unit-tests` corre los mismos archivos que `npm test` (`tests/`, `src/**/*.test.js` y
+`tests/TestSolicitud.js`), así que en local se prueban igual con `npm test`.
 
 ### Quality Gate de SAST
 
@@ -70,13 +70,11 @@ no una prueba de carga. Es la base de los escenarios de carga del Hito 3.
 5. **Cancelación previa (RF-5.7):** sin rol `CLIENTE` 403, titular 200, repetir 200 (idempotente)
    y las ofertas en curso quedan canceladas.
 
-> **Estado al 28/11/2026: el E2E falla en los flujos 2, 3 y 4** por un error de la app, no del
-> E2E. `iniciarDespacho` (`src/ofertas/despacho.js`) nunca pasa la solicitud de `pendiente` a
-> `buscando`: la función que lo hace existe (`solicitudes.iniciarBusqueda`, `src/main.js:177-181`)
-> pero nadie la llama. Como aceptar exige `estado = buscando`, **ninguna aceptación puede
-> asignar** (las dos reciben 409) y la búsqueda sin candidatos tampoco puede cerrar. Los tests
-> unitarios no lo ven porque sus datos de prueba arrancan en `buscando`. Con esa llamada agregada
-> al inicio de `iniciarDespacho`, el E2E pasa completo (35/35 verificaciones, probado localmente).
+> **El E2E encontró un error que ya está corregido.** Hasta el commit `050ebda`, `iniciarDespacho` no pasaba la
+> solicitud de `pendiente` a `buscando`, así que ninguna aceptación podía asignar (las dos recibían
+> 409) y la búsqueda sin candidatos no cerraba. G04 lo corrigió el 28/11 en ese commit: con
+> ese cambio el E2E pasa completo (35/35). Los tests unitarios no lo detectaban porque sus datos de
+> prueba arrancan en `buscando`.
 
 ### Mocks de los módulos dependientes
 
@@ -112,8 +110,9 @@ declara como dependencia par).
 ### Secretos
 
 `devops/ci/gitleaks.toml` excluye solo falsos positivos revisados a mano: valores de relleno de los
-archivos de ejemplo ("reemplazar…", "cambiar…") y los tokens falsos de
-`tests/comun/seguridad.test.js`.
+archivos de ejemplo ("reemplazar…", "cambiar…"), los tokens falsos de
+`tests/comun/seguridad.test.js` y el encabezado `Sec-WebSocket-Key` de la documentación del
+proyecto de investigación (es un valor aleatorio del protocolo WebSocket, no un secreto).
 
 **El job `secrets` falla hoy a propósito**: `.env.example` y `front/.env.example` tienen un
 `INTERNAL_API_TOKEN` y un `KEYCLOAK_ADMIN_CLIENT_SECRET` reales (commit `20b617c`, 25/11). Hay que

@@ -1,0 +1,12 @@
+Prueba de condición de carrera - 2026-11-11T16:53:15.527Z
+Asiento F5 de la función 42 (id 104), 10 usuarios a la vez
+
+Ingenua (leer y después escribir): 1 éxitos de 10 intentos simultáneos   <- MAL: varios creen que lo ganaron
+Condicionada (un solo UPDATE)   : 1 éxitos de 10 intentos simultáneos   <- BIEN: gana exactamente uno
+
+Prueba de condición de carrera - 2026-11-11T16:54:16.865Z
+Asiento F5 de la función 42 (id 104), 10 usuarios a la vez
+
+Ingenua (leer y después escribir): 10 éxitos de 10 intentos simultáneos   <- MAL: varios creen que lo ganaron
+Condicionada (un solo UPDATE)   : 1 éxitos de 10 intentos simultáneos   <- BIEN: gana exactamente uno
+

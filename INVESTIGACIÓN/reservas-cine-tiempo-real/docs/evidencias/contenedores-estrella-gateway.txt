@@ -1,0 +1,16 @@
+TAP version 13
+# Subtest: estrella: un bloqueo por REST llega a los dos sockets de su función y a ninguno de la otra
+ok 1 - estrella: un bloqueo por REST llega a los dos sockets de su función y a ninguno de la otra
+  ---
+  duration_ms: 216.325461
+  ...
+# GET /ws/sala/41?token=[REDACTADO] HTTP/1.1\\nHost: 127.0.0.1:8080\\nUpgrade: websocket\\nConnection: Upgrade\\nSec-WebSocket-Key: qwoq1j+PJVCdPcDrPO4lWQ==\\nSec-WebSocket-Version: 13\\n\\nHTTP/1.1 101 Switching Protocols\\nUpgrade: websocket\\nConnection: upgrade\\nSec-WebSocket-Accept: zMzdVwW3rCxy6Hcptv6tkT23TdY=
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 346.709187

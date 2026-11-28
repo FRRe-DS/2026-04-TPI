@@ -267,7 +267,7 @@ Stack tecnológico:
 | Dificultad o bloqueo | Los secretos están en el historial de git: además de reemplazarlos hay que rotarlos. El contrato con M3 no se puede validar contra el repositorio de la cátedra |
 | Siguiente acción | Abrir el PR en G04, pedirle a G04 que rote los secretos y armar el segundo PR con E2E y Docker |
 
-### 28/11/2026 - E2E y Docker en G04: el despacho no puede asignar
+### 28/11/2026 - E2E y Docker en G04: el despacho no podía asignar
 
 - Se aplicó por primera vez el esquema de Prisma de G04 sobre un MySQL real (`prisma db push`): se
   crearon las 8 tablas sin errores.
@@ -293,17 +293,32 @@ Stack tecnológico:
   y los jobs `e2e` y `docker` al CI, con lo que el workflow de G04 queda con los mismos seis jobs
   que el de G13. La imagen se probó localmente: queda sana y el E2E da el mismo resultado contra
   ella.
+- Antes de abrir el PR, GitHub marcó conflictos con `main`: entre el 27 y el 28/11 G04 había
+  mergeado varios cambios. Arregló su suite de tests en paralelo y agregó su propio `npm test`
+  (commit `2098401`). También corrigió el error del despacho por su cuenta, antes de que se le
+  informara (commit `050ebda`), y movió la consulta de ofertas a `/api/v1`.
+- Se incorporó `main` a las dos branches de DevOps (merge, sin reescribir historia). En los tests
+  y en `package.json` se adoptaron las versiones de G04 y se descartaron las de DevOps: del PR #1
+  solo queda, fuera de `devops/` y `.github/`, el renombre de `clienteM8.js`, que sigue siendo
+  necesario en Linux. Con eso pasan los 208 tests. El job `unit-tests` corre los mismos archivos
+  que su `npm test`.
+- Contra el código actual de G04, el E2E pasa completo (35/35): queda confirmado con MySQL real
+  que el arreglo funciona, incluida la asignación única con dos aceptaciones simultáneas. El
+  adaptador de k6 se actualizó a la ruta nueva de ofertas. La ruta vieja
+  (`GET /solicitudes/{id}/ofertas`) quedó respondiendo siempre 403; el frontend no la usa.
+- gitleaks encontró en el proyecto de investigación que G04 subió al repositorio 2 falsos positivos
+  (el encabezado `Sec-WebSocket-Key`, un valor aleatorio del protocolo WebSocket), que se excluyeron.
 
 | Campo | Detalle |
 |---|---|
 | Responsable/s | Fidanza, Felipe · Jerez, Fabricio E. · Urturi, Renzo O. |
 | Módulo | M5 (G04) |
 | Objetivo | Completar el CI de G04 con E2E y Docker |
-| Decisiones/acuerdos | El E2E verifica el comportamiento correcto aunque hoy falle: el error de despacho es de lógica funcional, así que lo corrige G04 (se le informa el arreglo propuesto). Mocks y scripts compartidos idénticos en los dos repositorios |
-| Repositorio/issue/PR | G04, branch `devops/e2e` (PR a abrir). G13, branch `devops/ci` (PR #14): mocks y script de tokens actualizados |
-| Evidencia | E2E local de G04: 25/29 verificaciones (las 4 que fallan son las del error de despacho); con la llamada agregada en una copia descartable: 35/35. E2E de G13 con los mocks compartidos: 45/45. Imagen de G04: `healthy`, usuario `node` |
-| Resultado | CI de G04 con los seis jobs. Error funcional de G04 detectado y localizado con archivo y línea |
-| Dificultad o bloqueo | Hasta que G04 corrija el despacho, el E2E de G04 queda en rojo. La imagen pesa ~800 MB porque el CLI de Prisma queda instalado: hay que achicarla antes del despliegue |
-| Siguiente acción | Abrir el PR del E2E en G04 y el issue del despacho con el arreglo propuesto |
+| Decisiones/acuerdos | El E2E verifica el comportamiento correcto aunque falle: el error de despacho es de lógica funcional y lo corrige G04 (lo hizo el mismo día, en `050ebda`). Ante el conflicto con `main` se adoptan los tests de G04, que son los dueños. Mocks y scripts compartidos idénticos en los dos repositorios |
+| Repositorio/issue/PR | G04, branch `devops/e2e` (PR a abrir) y PR #1 actualizado con `main`. G13, branch `devops/ci` (PR #14): mocks y script de tokens actualizados |
+| Evidencia | E2E local de G04 antes del arreglo: 25/29 (las 4 que fallan son las del error de despacho); con la llamada agregada en una copia descartable: 35/35; contra el `main` actual de G04: 35/35. Tests de G04 con `main` incorporado: 208/208. E2E de G13 con los mocks compartidos: 45/45. Imagen de G04: `healthy`, usuario `node` |
+| Resultado | CI de G04 con los seis jobs y el E2E en verde. El error de despacho quedó detectado, localizado y corregido |
+| Dificultad o bloqueo | Cambios de G04 en paralelo generaron conflictos con los PR abiertos. La imagen pesa ~800 MB porque el CLI de Prisma queda instalado: hay que achicarla antes del despliegue |
+| Siguiente acción | Subir las dos branches actualizadas, abrir el PR del E2E en G04 y avisarle a G04 de la ruta vieja de ofertas |
 
 ## Carga y cierre
