@@ -1,0 +1,17 @@
+{
+  "name": "M1 (Keycloak) POST /realms/{realm}/protocol/openid-connect/token - token de servicio de M5 (client credentials). La firma no se valida: M5 solo lo reenvía a los otros módulos (mocks)",
+  "request": {
+    "method": "POST",
+    "urlPathPattern": "/realms/[^/]+/protocol/openid-connect/token",
+    "bodyPatterns": [{ "contains": "grant_type=client_credentials" }]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "access_token": "token-de-servicio-ci",
+      "token_type": "Bearer",
+      "expires_in": 300
+    }
+  }
+}

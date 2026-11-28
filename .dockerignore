@@ -1,0 +1,12 @@
+# Lo que no entra en el contexto de build de la imagen (Dockerfile).
+.git
+.github
+node_modules
+**/node_modules
+**/.env
+front
+docs
+devops
+tests
+*.md
+INVESTIGACIÓN

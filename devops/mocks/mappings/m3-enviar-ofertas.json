@@ -1,0 +1,22 @@
+{
+  "name": "M3 POST /api/v1/integration/m5/offers - oferta recibida. Contrato acordado entre G04 y M3 del consorcio A (no está en el repositorio de la cátedra)",
+  "request": {
+    "method": "POST",
+    "urlPath": "/api/v1/integration/m5/offers",
+    "bodyPatterns": [
+      { "matchesJsonPath": "$.offerId" },
+      { "matchesJsonPath": "$.driverId" },
+      { "matchesJsonPath": "$.requestId" },
+      { "matchesJsonPath": "$.expiresAt" }
+    ]
+  },
+  "response": {
+    "status": 202,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "offerId": "{{jsonPath request.body '$.offerId'}}",
+      "status": "SENT"
+    },
+    "transformers": ["response-template"]
+  }
+}

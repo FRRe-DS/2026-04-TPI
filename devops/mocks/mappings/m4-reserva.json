@@ -1,0 +1,22 @@
+{
+  "name": "M4 POST /api/v1/conductores/{conductor_id}/reserva - reserva o liberación aceptada (contrato oficial: estado_temporal y solicitud_id obligatorios)",
+  "request": {
+    "method": "POST",
+    "urlPathPattern": "/api/v1/conductores/[0-9a-fA-F-]{36}/reserva",
+    "bodyPatterns": [
+      { "matchesJsonPath": "$[?(@.estado_temporal == 'RESERVADO' || @.estado_temporal == 'LIBERADO')]" },
+      { "matchesJsonPath": "$.solicitud_id" }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "conductor_id": "{{request.pathSegments.[3]}}",
+      "solicitud_id": "{{jsonPath request.body '$.solicitud_id'}}",
+      "estado_temporal": "{{jsonPath request.body '$.estado_temporal'}}",
+      "actualizado_en": "{{now}}"
+    },
+    "transformers": ["response-template"]
+  }
+}

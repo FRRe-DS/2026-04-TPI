@@ -1,0 +1,27 @@
+{
+  "name": "M7 POST /api/v1/tarifas/estimaciones - precio estimado (esquema Estimacion del contrato oficial)",
+  "request": {
+    "method": "POST",
+    "urlPath": "/api/v1/tarifas/estimaciones",
+    "bodyPatterns": [
+      { "matchesJsonPath": "$[?(@.tipo_vehiculo == 'auto' || @.tipo_vehiculo == 'moto')]" },
+      { "matchesJsonPath": "$.distancia_km" },
+      { "matchesJsonPath": "$.duracion_estimada_min" }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "regla_id": "7a1f0b6e-2c3d-4e5f-8a9b-0c1d2e3f4a5b",
+      "moneda": "ARS",
+      "desglose": {
+        "tarifa_base": 800,
+        "cargo_distancia": 2480,
+        "cargo_tiempo": 1120,
+        "multiplicador_demanda": 1,
+        "total": 4400
+      }
+    }
+  }
+}

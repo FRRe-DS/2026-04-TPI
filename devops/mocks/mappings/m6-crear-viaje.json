@@ -1,0 +1,33 @@
+{
+  "name": "M6 POST /trips - viaje creado (esquema Trip del contrato oficial). Idempotente por requestId: el id del viaje se deriva del requestId",
+  "request": {
+    "method": "POST",
+    "urlPath": "/trips",
+    "bodyPatterns": [
+      { "matchesJsonPath": "$.requestId" },
+      { "matchesJsonPath": "$.driverId" },
+      { "matchesJsonPath": "$.vehicleId" }
+    ]
+  },
+  "response": {
+    "status": 201,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "id": "{{jsonPath request.body '$.requestId'}}",
+      "requestId": "{{jsonPath request.body '$.requestId'}}",
+      "reservationId": null,
+      "clientId": "{{jsonPath request.body '$.clientId'}}",
+      "driverId": "{{jsonPath request.body '$.driverId'}}",
+      "vehicleId": "{{jsonPath request.body '$.vehicleId'}}",
+      "vehicleType": "{{jsonPath request.body '$.vehicleType'}}",
+      "originLatitude": "{{jsonPath request.body '$.originLatitude'}}",
+      "originLongitude": "{{jsonPath request.body '$.originLongitude'}}",
+      "destinationLatitude": "{{jsonPath request.body '$.destinationLatitude'}}",
+      "destinationLongitude": "{{jsonPath request.body '$.destinationLongitude'}}",
+      "state": "ASSIGNED",
+      "version": 1,
+      "createdAt": "{{now}}"
+    },
+    "transformers": ["response-template"]
+  }
+}
